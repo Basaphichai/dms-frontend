@@ -479,10 +479,16 @@ function DashboardContent() {
                       return (
                         <tr key={doc.id} className="hover:bg-slate-50/80 transition">
                           <td className="px-4 md:px-6 py-4 font-medium text-slate-900 flex items-center gap-3">
-                            {category === 'pdf' ? (
+                            {category === 'image' && doc.file_url ? (
+                              <img 
+                                src={doc.file_url} 
+                                alt={doc.name} 
+                                className="w-10 h-10 object-cover rounded-md border border-slate-200 shrink-0 shadow-sm hover:scale-105 transition cursor-pointer"
+                                onClick={() => handleOpenFile(doc.file_url)}
+                                title="คลิกเพื่อดูรูปขนาดเต็ม"
+                              />
+                            ) : category === 'pdf' ? (
                               <FileText size={18} className="shrink-0 text-red-500" />
-                            ) : category === 'image' ? (
-                              <ImageIcon size={18} className="shrink-0 text-emerald-500" />
                             ) : (
                               <FileText size={18} className="shrink-0 text-blue-500" />
                             )}
