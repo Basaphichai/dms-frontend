@@ -16,7 +16,8 @@ import {
   Loader2 
 } from 'lucide-react';
 
-const API_BASE_URL = 'https://dms-backend-gf47.onrender.com';
+// ✅ URL ของ API บน Render (มี prefix /api/documents)
+const API_BASE_URL = 'https://dms-backend-gf47.onrender.com/api/documents';
 
 function DashboardContent() {
   const { user, logout } = useAuth();
@@ -28,21 +29,22 @@ function DashboardContent() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   
-  // 🔥 State สำหรับจัดการ Tab หมวดหมู่ ('all' | 'pdf' | 'word')
+  // State สำหรับจัดการ Tab หมวดหมู่ ('all' | 'pdf' | 'word')
   const [activeTab, setActiveTab] = useState('all');
 
-  // 1. ดึงข้อมูลเอกสารตาม userEmail
+  // 1. GET: ดึงข้อมูลเอกสารตาม userEmail
   const fetchDocuments = async () => {
     if (!user?.email) return;
 
     try {
       setLoadingDocs(true);
+      setErrorMsg('');
       const res = await fetch(`${API_BASE_URL}?userEmail=${encodeURIComponent(user.email)}`);
       const result = await res.json();
       if (result.success) {
-        setDocuments(result.data);
+        setDocuments(result.data || []);
       } else {
-        setErrorMsg('ไม่สามารถดึงข้อมูลเอกสารได้');
+        setErrorMsg(result.message || 'ไม่สามารถดึงข้อมูลเอกสารได้');
       }
     } catch (err) {
       setErrorMsg('เกิดข้อผิดพลาดในการเชื่อมต่อกับเซิร์ฟเวอร์');
@@ -57,10 +59,15 @@ function DashboardContent() {
     }
   }, [user?.email]);
 
-  // 2. อัปโหลดไฟล์
+  // 2. POST: อัปโหลดไฟล์ (แก้ไขระบบส่ง userEmail และ Multipart Form)
   const handleFileUpload = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
+
+    if (!user?.email) {
+      setErrorMsg('ไม่พบข้อมูลอีเมลผู้ใช้ กรุณาล็อกอินใหม่อีกครั้ง');
+      return;
+    }
 
     const allowedTypes = [
       'application/pdf',
@@ -79,16 +86,16 @@ function DashboardContent() {
     try {
       const formData = new FormData();
       formData.append('file', file);
-      formData.append('userEmail', user?.email || '');
+      formData.append('userEmail', user.email); // ✅ แนบ userEmail ลงใน Form Data
 
       const res = await fetch(`${API_BASE_URL}/upload`, {
         method: 'POST',
-        body: formData,
+        body: formData, // fetch จะจัดการ Content-Type header ให้โดยอัตโนมัติ
       });
 
       const result = await res.json();
       if (result.success) {
-        fetchDocuments();
+        fetchDocuments(); // อัปโหลดสำเร็จ -> โหลดรายการใหม่ทันที
       } else {
         setErrorMsg(result.message || 'เกิดข้อผิดพลาดในการอัปโหลด');
       }
@@ -100,26 +107,26 @@ function DashboardContent() {
     }
   };
 
-  // 3. ลบเอกสาร
+  // 3. DELETE: ลบเอกสาร
   const handleDelete = async (id) => {
     if (!confirm('คุณต้องการลบเอกสารนี้ใช่หรือไม่?')) return;
 
     try {
-      const res = await fetch(`${API_BASE_URL}/${id}?userEmail=${encodeURIComponent(user?.email)}`, {
+      const res = await fetch(`${API_BASE_URL}/${id}?userEmail=${encodeURIComponent(user?.email || '')}`, {
         method: 'DELETE',
       });
       const result = await res.json();
       if (result.success) {
         setDocuments(documents.filter(doc => doc.id !== id));
       } else {
-        alert(result.message);
+        alert(result.message || 'ไม่สามารถลบเอกสารได้');
       }
     } catch (err) {
-      alert('เกิดข้อผิดพลาดในการลบเอกสาร');
+      alert('เกิดข้อผิดพลาดในการเชื่อมต่อเพื่อลบเอกสาร');
     }
   };
 
-  // 4. แก้ไขชื่อเอกสาร
+  // 4. PUT: แก้ไขชื่อเอกสาร
   const handleEdit = async (id, currentName) => {
     const newName = prompt('แก้ไขชื่อเอกสาร:', currentName);
     if (!newName || newName.trim() === '' || newName === currentName) return;
@@ -128,13 +135,13 @@ function DashboardContent() {
       const res = await fetch(`${API_BASE_URL}/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: newName, userEmail: user?.email }),
+        body: JSON.stringify({ name: newName.trim(), userEmail: user?.email }),
       });
       const result = await res.json();
       if (result.success) {
-        setDocuments(documents.map(doc => doc.id === id ? { ...doc, name: newName } : doc));
+        setDocuments(documents.map(doc => doc.id === id ? { ...doc, name: newName.trim() } : doc));
       } else {
-        alert(result.message);
+        alert(result.message || 'ไม่สามารถแก้ไขชื่อเอกสารได้');
       }
     } catch (err) {
       alert('เกิดข้อผิดพลาดในการแก้ไขชื่อเอกสาร');
@@ -150,13 +157,13 @@ function DashboardContent() {
     }
   };
 
-  // 🔥 คำนวณจำนวนเอกสารแยกประเภทสำหรับแสดงตัวเลขบน Sidebar
+  // คำนวณจำนวนเอกสารแยกประเภทสำหรับแสดงตัวเลขบน Sidebar
   const pdfCount = documents.filter(d => (d.file_type || d.type || '').includes('pdf')).length;
   const wordCount = documents.filter(d => (d.file_type || d.type || '').includes('word')).length;
 
-  // 🔥 ฟิลเตอร์เอกสารตามคำค้นหา (Search) และตามหมวดหมู่ที่เลือก (Sidebar Tab)
+  // ฟิลเตอร์เอกสารตามคำค้นหา (Search) และตามหมวดหมู่ที่เลือก (Sidebar Tab)
   const filteredDocs = documents.filter(doc => {
-    const matchesSearch = doc.name.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesSearch = doc.name ? doc.name.toLowerCase().includes(searchTerm.toLowerCase()) : false;
     const fileTypeStr = doc.file_type || doc.type || '';
     
     if (activeTab === 'pdf') {
@@ -194,7 +201,7 @@ function DashboardContent() {
             </button>
           </div>
 
-          {/* 🔥 Navigation menu จัดหมวดหมู่ใหม่ */}
+          {/* Navigation menu */}
           <nav className="p-4 space-y-1.5">
             <button 
               onClick={() => { setActiveTab('all'); setSidebarOpen(false); }}
