@@ -3,6 +3,7 @@ import { AuthProvider, useAuth } from './AuthContext';
 import LoginForm from './LoginForm';
 import { 
   FileText, 
+  Image as ImageIcon, 
   Upload, 
   Trash2, 
   Edit3, 
@@ -16,9 +17,36 @@ import {
   Loader2 
 } from 'lucide-react';
 
-// ✅ กำหนด Base Domain และ Route ให้ชัดเจน
+// ✅ กำหนด Base Domain และ Route
 const BASE_DOMAIN = 'https://dms-backend-gf47.onrender.com';
 const API_BASE_URL = `${BASE_DOMAIN}/api/documents`;
+
+// 🟢 Helper Function เช็กประเภทไฟล์จาก MIME Type และ นามสกุลไฟล์
+const getFileTypeCategory = (doc) => {
+  const mime = (doc.file_type || doc.type || '').toLowerCase();
+  const name = (doc.name || '').toLowerCase();
+  const ext = name.split('.').pop() || '';
+
+  const imageExts = ['jpg', 'jpeg', 'png', 'webp', 'gif', 'heic', 'heif', 'svg', 'bmp'];
+  const wordExts = ['doc', 'docx'];
+  const pdfExts = ['pdf'];
+
+  if (mime.startsWith('image/') || imageExts.includes(ext)) {
+    return 'image';
+  }
+  if (mime.includes('pdf') || pdfExts.includes(ext)) {
+    return 'pdf';
+  }
+  if (
+    mime.includes('word') || 
+    mime.includes('msword') || 
+    mime.includes('officedocument') || 
+    wordExts.includes(ext)
+  ) {
+    return 'word';
+  }
+  return 'other';
+};
 
 function DashboardContent() {
   const { user, logout } = useAuth();
@@ -30,7 +58,7 @@ function DashboardContent() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   
-  // State สำหรับจัดการ Tab หมวดหมู่ ('all' | 'pdf' | 'word')
+  // State สำหรับจัดการ Tab หมวดหมู่ ('all' | 'pdf' | 'word' | 'image')
   const [activeTab, setActiveTab] = useState('all');
 
   // 1. GET: ดึงข้อมูลเอกสารตาม userEmail
@@ -41,7 +69,6 @@ function DashboardContent() {
       setLoadingDocs(true);
       setErrorMsg('');
 
-      // ✅ ใช้ URL Object ป้องกันปัญหา Slash ซ้ำหรือ Query String ตกหล่น
       const url = new URL(API_BASE_URL);
       url.searchParams.append('userEmail', user.email);
 
@@ -66,7 +93,7 @@ function DashboardContent() {
     }
   }, [user?.email]);
 
-  // 2. POST: อัปโหลดไฟล์ (แก้ไข Multipart Form และ Endpoint Path)
+  // 2. POST: อัปโหลดไฟล์ (ปรับปรุงการดักรูปภาพให้รัดกุม 100%)
   const handleFileUpload = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -76,14 +103,28 @@ function DashboardContent() {
       return;
     }
 
-    const allowedTypes = [
-      'application/pdf',
-      'application/msword',
-      'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-    ];
+    // 🟢 ตรวจสอบขนาดไฟล์ฝั่ง Client (ไม่เกิน 25MB)
+    const MAX_SIZE_MB = 25;
+    if (file.size > MAX_SIZE_MB * 1024 * 1024) {
+      setErrorMsg(`ขนาดไฟล์ใหญ่เกินไป (รองรับสูงสุด ${MAX_SIZE_MB}MB)`);
+      e.target.value = '';
+      return;
+    }
 
-    if (!allowedTypes.includes(file.type)) {
-      setErrorMsg('อนุญาตใหัปโหลดเฉพาะไฟล์ PDF (.pdf) และ Word (.doc, .docx) เท่านั้น!');
+    // 🟢 ดึงนามสกุลไฟล์มาเช็ก
+    const fileExt = file.name.split('.').pop()?.toLowerCase() || '';
+    
+    // รายการนามสกุลไฟล์ที่อนุญาต
+    const allowedExtensions = ['pdf', 'doc', 'docx', 'jpg', 'jpeg', 'png', 'webp', 'gif', 'heic', 'heif'];
+    
+    const isImageMime = file.type ? file.type.startsWith('image/') : false;
+    const isPdfOrWordMime = file.type ? (file.type.includes('pdf') || file.type.includes('word') || file.type.includes('officedocument')) : false;
+    const isValidExt = allowedExtensions.includes(fileExt);
+
+    // ถ้าไม่ใช่ทั้ง รูปภาพ, PDF/Word และ นามสกุลไฟล์ไม่อยู่ในรายการ ให้บล็อก
+    if (!isImageMime && !isPdfOrWordMime && !isValidExt) {
+      setErrorMsg('อนุญาตใหัปโหลดเฉพาะไฟล์ PDF, Word (.doc, .docx) และรูปภาพ (.jpg, .png, .webp, .gif) เท่านั้น!');
+      e.target.value = '';
       return;
     }
 
@@ -95,7 +136,6 @@ function DashboardContent() {
       formData.append('file', file);
       formData.append('userEmail', user.email);
 
-      // ✅ POST ไปยัง /api/documents/upload
       const res = await fetch(`${API_BASE_URL}/upload`, {
         method: 'POST',
         body: formData,
@@ -103,12 +143,12 @@ function DashboardContent() {
 
       const result = await res.json();
       if (res.ok && result.success) {
-        fetchDocuments(); // อัปโหลดสำเร็จ -> โหลดรายการใหม่ทันที
+        fetchDocuments();
       } else {
         setErrorMsg(result.message || 'เกิดข้อผิดพลาดในการอัปโหลด');
       }
     } catch (err) {
-      setErrorMsg('ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์เพื่ออัปโหลดได้');
+      setErrorMsg('ไม่สามารถส่งไฟล์ไปยังเซิร์ฟเวอร์ได้ กรุณาตรวจสอบอินเทอร์เน็ตหรือลองใหม่อีกครั้ง');
     } finally {
       setIsUploading(false);
       e.target.value = '';
@@ -165,7 +205,7 @@ function DashboardContent() {
     }
   };
 
-  // 5. เปิดดูไฟล์ (แก้ไขปัญหา Popup Blocker)
+  // 5. เปิดดูไฟล์
   const handleOpenFile = (fileUrl) => {
     if (fileUrl) {
       window.open(fileUrl, '_blank', 'noopener,noreferrer');
@@ -174,24 +214,19 @@ function DashboardContent() {
     }
   };
 
-  // คำนวณจำนวนเอกสารแยกประเภทสำหรับแสดงตัวเลขบน Sidebar
-  const pdfCount = documents.filter(d => (d.file_type || d.type || '').toLowerCase().includes('pdf')).length;
-  const wordCount = documents.filter(d => {
-    const type = (d.file_type || d.type || '').toLowerCase();
-    return type.includes('word') || type.includes('msword') || type.includes('officedocument');
-  }).length;
+  // 🟢 คำนวณจำนวนเอกสารแยกประเภท (ใช้ Helper Function)
+  const pdfCount = documents.filter(d => getFileTypeCategory(d) === 'pdf').length;
+  const wordCount = documents.filter(d => getFileTypeCategory(d) === 'word').length;
+  const imageCount = documents.filter(d => getFileTypeCategory(d) === 'image').length;
 
-  // ฟิลเตอร์เอกสารตามคำค้นหา (Search) และตามหมวดหมู่ที่เลือก (Sidebar Tab)
+  // 🟢 ฟิลเตอร์เอกสารตามค้นหาและหมวดหมู่ (PDF / Word / Image / All)
   const filteredDocs = documents.filter(doc => {
     const matchesSearch = doc.name ? doc.name.toLowerCase().includes(searchTerm.toLowerCase()) : false;
-    const fileTypeStr = (doc.file_type || doc.type || '').toLowerCase();
-    
-    if (activeTab === 'pdf') {
-      return matchesSearch && fileTypeStr.includes('pdf');
-    }
-    if (activeTab === 'word') {
-      return matchesSearch && (fileTypeStr.includes('word') || fileTypeStr.includes('msword') || fileTypeStr.includes('officedocument'));
-    }
+    const category = getFileTypeCategory(doc);
+
+    if (activeTab === 'pdf') return matchesSearch && category === 'pdf';
+    if (activeTab === 'word') return matchesSearch && category === 'word';
+    if (activeTab === 'image') return matchesSearch && category === 'image';
     return matchesSearch; // 'all'
   });
 
@@ -206,7 +241,7 @@ function DashboardContent() {
         />
       )}
 
-      {/* Sidebar - Mobile Friendly & Category Navigation */}
+      {/* Sidebar Navigation */}
       <aside className={`fixed inset-y-0 left-0 z-50 w-64 bg-white border-r border-slate-200 transform transition-transform duration-300 ease-in-out ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} md:relative md:translate-x-0 flex flex-col justify-between`}>
         <div>
           <div className="h-16 flex items-center justify-between px-6 border-b border-slate-100">
@@ -279,6 +314,23 @@ function DashboardContent() {
                 {wordCount}
               </span>
             </button>
+
+            <button 
+              onClick={() => { setActiveTab('image'); setSidebarOpen(false); }}
+              className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-sm font-medium transition ${
+                activeTab === 'image' 
+                  ? 'bg-slate-100 text-slate-900 font-semibold' 
+                  : 'text-slate-600 hover:bg-slate-50'
+              }`}
+            >
+              <div className="flex items-center gap-3">
+                <ImageIcon size={18} className="text-emerald-500" />
+                <span>ไฟล์รูปภาพ</span>
+              </div>
+              <span className="text-xs bg-emerald-50 text-emerald-600 px-2 py-0.5 rounded-full border border-emerald-100 font-normal">
+                {imageCount}
+              </span>
+            </button>
           </nav>
         </div>
 
@@ -308,6 +360,7 @@ function DashboardContent() {
               {activeTab === 'all' && 'คลังเอกสารทั้งหมด'}
               {activeTab === 'pdf' && 'คลังเอกสาร PDF'}
               {activeTab === 'word' && 'คลังเอกสาร Word'}
+              {activeTab === 'image' && 'คลังรูปภาพ'}
             </h1>
           </div>
           <div className="flex items-center gap-3">
@@ -324,7 +377,7 @@ function DashboardContent() {
         <main className="p-4 md:p-8 space-y-6 max-w-6xl w-full mx-auto">
           
           {/* Dashboard Summary Cards */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 md:gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 md:gap-4">
             <div 
               onClick={() => setActiveTab('all')} 
               className={`p-4 md:p-5 rounded-xl border transition cursor-pointer shadow-sm ${
@@ -352,6 +405,15 @@ function DashboardContent() {
               <p className="text-xs text-slate-500 font-medium">ไฟล์ Word</p>
               <p className="text-xl md:text-2xl font-bold text-slate-900 mt-1">{wordCount} รายการ</p>
             </div>
+            <div 
+              onClick={() => setActiveTab('image')} 
+              className={`p-4 md:p-5 rounded-xl border transition cursor-pointer shadow-sm ${
+                activeTab === 'image' ? 'bg-white border-emerald-500 ring-1 ring-emerald-500' : 'bg-white border-slate-200 hover:border-slate-300'
+              }`}
+            >
+              <p className="text-xs text-slate-500 font-medium">ไฟล์รูปภาพ</p>
+              <p className="text-xl md:text-2xl font-bold text-slate-900 mt-1">{imageCount} รายการ</p>
+            </div>
           </div>
 
           {/* Action Bar & Search */}
@@ -373,7 +435,7 @@ function DashboardContent() {
               <input 
                 type="file" 
                 disabled={isUploading}
-                accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" 
+                accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.webp,.gif,.heic,image/*" 
                 onChange={handleFileUpload}
                 className="hidden" 
               />
@@ -381,8 +443,9 @@ function DashboardContent() {
           </div>
 
           {errorMsg && (
-            <div className="p-3 text-xs bg-red-50 text-red-600 rounded-lg border border-red-100">
-              {errorMsg}
+            <div className="p-3 text-xs bg-red-50 text-red-600 rounded-lg border border-red-100 flex justify-between items-center">
+              <span>{errorMsg}</span>
+              <button onClick={() => setErrorMsg('')} className="text-red-400 hover:text-red-600 text-xs ml-2">✕</button>
             </div>
           )}
 
@@ -409,15 +472,20 @@ function DashboardContent() {
                     </tr>
                   ) : filteredDocs.length > 0 ? (
                     filteredDocs.map((doc) => {
-                      const fileTypeStr = (doc.file_type || doc.type || '').toLowerCase();
-                      const isPdf = fileTypeStr.includes('pdf');
+                      const category = getFileTypeCategory(doc);
                       const displaySize = doc.file_size || doc.size || '-';
                       const displayDate = doc.created_at ? new Date(doc.created_at).toLocaleDateString('th-TH') : '-';
 
                       return (
                         <tr key={doc.id} className="hover:bg-slate-50/80 transition">
                           <td className="px-4 md:px-6 py-4 font-medium text-slate-900 flex items-center gap-3">
-                            <FileText size={18} className={`shrink-0 ${isPdf ? "text-red-500" : "text-blue-500"}`} />
+                            {category === 'pdf' ? (
+                              <FileText size={18} className="shrink-0 text-red-500" />
+                            ) : category === 'image' ? (
+                              <ImageIcon size={18} className="shrink-0 text-emerald-500" />
+                            ) : (
+                              <FileText size={18} className="shrink-0 text-blue-500" />
+                            )}
                             <span className="truncate max-w-[180px] sm:max-w-xs">{doc.name}</span>
                           </td>
                           <td className="px-4 md:px-6 py-4 text-slate-500 text-xs">{displaySize}</td>
