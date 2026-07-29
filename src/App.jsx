@@ -16,8 +16,9 @@ import {
   Loader2 
 } from 'lucide-react';
 
-// ✅ URL ของ API บน Render (มี prefix /api/documents)
-const API_BASE_URL = 'https://dms-backend-gf47.onrender.com/api/documents';
+// ✅ กำหนด Base Domain และ Route ให้ชัดเจน
+const BASE_DOMAIN = 'https://dms-backend-gf47.onrender.com';
+const API_BASE_URL = `${BASE_DOMAIN}/api/documents`;
 
 function DashboardContent() {
   const { user, logout } = useAuth();
@@ -39,9 +40,15 @@ function DashboardContent() {
     try {
       setLoadingDocs(true);
       setErrorMsg('');
-      const res = await fetch(`${API_BASE_URL}?userEmail=${encodeURIComponent(user.email)}`);
+
+      // ✅ ใช้ URL Object ป้องกันปัญหา Slash ซ้ำหรือ Query String ตกหล่น
+      const url = new URL(API_BASE_URL);
+      url.searchParams.append('userEmail', user.email);
+
+      const res = await fetch(url.toString());
       const result = await res.json();
-      if (result.success) {
+
+      if (res.ok && result.success) {
         setDocuments(result.data || []);
       } else {
         setErrorMsg(result.message || 'ไม่สามารถดึงข้อมูลเอกสารได้');
@@ -59,7 +66,7 @@ function DashboardContent() {
     }
   }, [user?.email]);
 
-  // 2. POST: อัปโหลดไฟล์ (แก้ไขระบบส่ง userEmail และ Multipart Form)
+  // 2. POST: อัปโหลดไฟล์ (แก้ไข Multipart Form และ Endpoint Path)
   const handleFileUpload = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -76,7 +83,7 @@ function DashboardContent() {
     ];
 
     if (!allowedTypes.includes(file.type)) {
-      setErrorMsg('อนุญาตให้อัปโหลดเฉพาะไฟล์ PDF (.pdf) และ Word (.doc, .docx) เท่านั้น!');
+      setErrorMsg('อนุญาตใหัปโหลดเฉพาะไฟล์ PDF (.pdf) และ Word (.doc, .docx) เท่านั้น!');
       return;
     }
 
@@ -86,15 +93,16 @@ function DashboardContent() {
     try {
       const formData = new FormData();
       formData.append('file', file);
-      formData.append('userEmail', user.email); // ✅ แนบ userEmail ลงใน Form Data
+      formData.append('userEmail', user.email);
 
+      // ✅ POST ไปยัง /api/documents/upload
       const res = await fetch(`${API_BASE_URL}/upload`, {
         method: 'POST',
-        body: formData, // fetch จะจัดการ Content-Type header ให้โดยอัตโนมัติ
+        body: formData,
       });
 
       const result = await res.json();
-      if (result.success) {
+      if (res.ok && result.success) {
         fetchDocuments(); // อัปโหลดสำเร็จ -> โหลดรายการใหม่ทันที
       } else {
         setErrorMsg(result.message || 'เกิดข้อผิดพลาดในการอัปโหลด');
@@ -112,12 +120,18 @@ function DashboardContent() {
     if (!confirm('คุณต้องการลบเอกสารนี้ใช่หรือไม่?')) return;
 
     try {
-      const res = await fetch(`${API_BASE_URL}/${id}?userEmail=${encodeURIComponent(user?.email || '')}`, {
+      const url = new URL(`${API_BASE_URL}/${id}`);
+      if (user?.email) {
+        url.searchParams.append('userEmail', user.email);
+      }
+
+      const res = await fetch(url.toString(), {
         method: 'DELETE',
       });
       const result = await res.json();
-      if (result.success) {
-        setDocuments(documents.filter(doc => doc.id !== id));
+
+      if (res.ok && result.success) {
+        setDocuments(prevDocs => prevDocs.filter(doc => doc.id !== id));
       } else {
         alert(result.message || 'ไม่สามารถลบเอกสารได้');
       }
@@ -138,8 +152,11 @@ function DashboardContent() {
         body: JSON.stringify({ name: newName.trim(), userEmail: user?.email }),
       });
       const result = await res.json();
-      if (result.success) {
-        setDocuments(documents.map(doc => doc.id === id ? { ...doc, name: newName.trim() } : doc));
+
+      if (res.ok && result.success) {
+        setDocuments(prevDocs => 
+          prevDocs.map(doc => doc.id === id ? { ...doc, name: newName.trim() } : doc)
+        );
       } else {
         alert(result.message || 'ไม่สามารถแก้ไขชื่อเอกสารได้');
       }
@@ -148,29 +165,32 @@ function DashboardContent() {
     }
   };
 
-  // 5. เปิดดูไฟล์
+  // 5. เปิดดูไฟล์ (แก้ไขปัญหา Popup Blocker)
   const handleOpenFile = (fileUrl) => {
     if (fileUrl) {
-      window.open(fileUrl, '_blank');
+      window.open(fileUrl, '_blank', 'noopener,noreferrer');
     } else {
       alert('ไม่พบลิงก์ไฟล์เอกสาร');
     }
   };
 
   // คำนวณจำนวนเอกสารแยกประเภทสำหรับแสดงตัวเลขบน Sidebar
-  const pdfCount = documents.filter(d => (d.file_type || d.type || '').includes('pdf')).length;
-  const wordCount = documents.filter(d => (d.file_type || d.type || '').includes('word')).length;
+  const pdfCount = documents.filter(d => (d.file_type || d.type || '').toLowerCase().includes('pdf')).length;
+  const wordCount = documents.filter(d => {
+    const type = (d.file_type || d.type || '').toLowerCase();
+    return type.includes('word') || type.includes('msword') || type.includes('officedocument');
+  }).length;
 
   // ฟิลเตอร์เอกสารตามคำค้นหา (Search) และตามหมวดหมู่ที่เลือก (Sidebar Tab)
   const filteredDocs = documents.filter(doc => {
     const matchesSearch = doc.name ? doc.name.toLowerCase().includes(searchTerm.toLowerCase()) : false;
-    const fileTypeStr = doc.file_type || doc.type || '';
+    const fileTypeStr = (doc.file_type || doc.type || '').toLowerCase();
     
     if (activeTab === 'pdf') {
       return matchesSearch && fileTypeStr.includes('pdf');
     }
     if (activeTab === 'word') {
-      return matchesSearch && fileTypeStr.includes('word');
+      return matchesSearch && (fileTypeStr.includes('word') || fileTypeStr.includes('msword') || fileTypeStr.includes('officedocument'));
     }
     return matchesSearch; // 'all'
   });
@@ -389,7 +409,7 @@ function DashboardContent() {
                     </tr>
                   ) : filteredDocs.length > 0 ? (
                     filteredDocs.map((doc) => {
-                      const fileTypeStr = doc.file_type || doc.type || '';
+                      const fileTypeStr = (doc.file_type || doc.type || '').toLowerCase();
                       const isPdf = fileTypeStr.includes('pdf');
                       const displaySize = doc.file_size || doc.size || '-';
                       const displayDate = doc.created_at ? new Date(doc.created_at).toLocaleDateString('th-TH') : '-';
