@@ -118,7 +118,7 @@ function DashboardContent() {
     const allowedExtensions = ['pdf', 'doc', 'docx', 'jpg', 'jpeg', 'png', 'webp', 'gif', 'heic', 'heif'];
     
     const isImageMime = file.type ? file.type.startsWith('image/') : false;
-    const isPdfOrWordMime = file.type ? (file.type.includes('pdf') || file.type.includes('word') || file.type.includes('officedocument')) : false;
+    const isPdfOrWordMime = file.type ? (file.type.includes('pdf') || file.type.includes('word') || file.type.includes('officedocument') || file.type.includes('msword')) : false;
     const isValidExt = allowedExtensions.includes(fileExt);
 
     // ถ้าไม่ใช่ทั้ง รูปภาพ, PDF/Word และ นามสกุลไฟล์ไม่อยู่ในรายการ ให้บล็อก
@@ -435,7 +435,7 @@ function DashboardContent() {
               <input 
                 type="file" 
                 disabled={isUploading}
-                accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.webp,.gif,.heic,image/*" 
+                accept="image/*,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,.pdf,.doc,.docx" 
                 onChange={handleFileUpload}
                 className="hidden" 
               />
