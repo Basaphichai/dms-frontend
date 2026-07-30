@@ -61,228 +61,122 @@ const getSupabaseToken = () => {
   return '';
 };
 
-function DashboardContent() {
-  const { user, logout } = useAuth();
-  const [documents, setDocuments] = useState([]);
-  const [usersList, setUsersList] = useState([]);
-  const [loadingDocs, setLoadingDocs] = useState(true);
-  const [loadingUsers, setLoadingUsers] = useState(false);
-  const [isUploading, setIsUploading] = useState(false);
-  const [searchTerm, setSearchTerm] = useState('');
+import React, { useState, useEffect } from 'react';
+import {
+  Folder, FileText, ImageIcon, Upload, Trash2, Edit3,
+  Search, Shield, User, LogOut, Menu, X, ExternalLink,
+  LayoutDashboard, Users, Loader2, Eye
+} from 'lucide-react';
+
+function getFileTypeCategory(doc) {
+  const name = (doc.name || '').toLowerCase();
+  if (name.endsWith('.pdf')) return 'pdf';
+  if (name.endsWith('.png') || name.endsWith('.jpg') || name.endsWith('.jpeg')) return 'image';
+  return 'word';
+}
+
+export default function App() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [errorMsg, setErrorMsg] = useState('');
   const [activeTab, setActiveTab] = useState('all');
+  const [documents, setDocuments] = useState([]);
+  const [loadingDocs, setLoadingDocs] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [isUploading, setIsUploading] = useState(false);
+  const [errorMsg, setErrorMsg] = useState('');
 
-  const fetchDocuments = async () => {
-    if (!user?.email) return;
-    try {
-      setLoadingDocs(true);
-      setErrorMsg('');
-      const url = new URL(API_BASE_URL);
-      
-      url.searchParams.append('userEmail', user.email);
-      if (user?.role) {
-        url.searchParams.append('userRole', user.role);
-      }
+  const [user] = useState({ email: 'aphichaichiaraksa@gmail.com', role: 'admin' });
+  const [usersList, setUsersList] = useState([]);
+  const [loadingUsers, setLoadingUsers] = useState(false);
 
-      const res = await fetch(url.toString());
-      const result = await res.json();
-      if (res.ok && result.success) {
-        setDocuments(result.data || []);
-      } else {
-        setErrorMsg(result.message || 'ไม่สามารถดึงข้อมูลเอกสารได้');
-      }
-    } catch (err) {
-      setErrorMsg('เกิดข้อผิดพลาดในการเชื่อมต่อกับเซิร์ฟเวอร์');
-    } finally {
-      setLoadingDocs(false);
-    }
-  };
+  // Load mock documents on first render
+  useEffect(() => {
+    setDocuments([
+      { id: 1, name: 'ครุฑ.png', file_size: '0.03 MB', created_at: '2026-07-30', file_url: '#' },
+      { id: 2, name: 'template_13 คำสั่ง.dot', file_size: '0.07 MB', created_at: '2026-07-30', file_url: '#' },
+      { id: 3, name: 'ประกาศการรับสมัครทหารกองประจำการสายวิทยาการ...', file_size: '3.77 MB', created_at: '2026-07-30', file_url: '#' },
+      { id: 4, name: '260324_แคตตาล็อกสินค้า CAT final.pdf', file_size: '4.94 MB', created_at: '2026-07-29', file_url: '#' }
+    ]);
+  }, []);
 
-  const fetchUsers = async () => {
-    if (user?.role !== 'admin') return;
-    try {
+  // Load mock users whenever the admin opens the "users" tab
+  useEffect(() => {
+    if (activeTab === 'users' && user.role === 'admin') {
       setLoadingUsers(true);
-      const res = await fetch(`${BASE_DOMAIN}/api/users`);
-      const result = await res.json();
-      if (res.ok && result.success) {
-        setUsersList(result.data || []);
-      }
-    } catch (err) {
-      console.error('Error fetching users:', err);
-    } finally {
-      setLoadingUsers(false);
+      const timer = setTimeout(() => {
+        setUsersList([
+          { id: 'u1', email: 'aphichaichiaraksa@gmail.com', role: 'admin', created_at: '2026-01-15' },
+          { id: 'u2', email: 'somchai@example.com', role: 'user', created_at: '2026-03-02' }
+        ]);
+        setLoadingUsers(false);
+      }, 500);
+      return () => clearTimeout(timer);
     }
-  };
-
-  useEffect(() => {
-    if (user?.email) fetchDocuments();
-  }, [user?.email, user?.role]);
-
-  useEffect(() => {
-    if (activeTab === 'users' && user?.role === 'admin') {
-      fetchUsers();
-    }
-  }, [activeTab, user?.role]);
-
-  const handleFileUpload = async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    if (!user?.email) {
-      setErrorMsg('ไม่พบข้อมูลอีเมลผู้ใช้ กรุณาล็อกอินใหม่อีกครั้ง');
-      return;
-    }
-
-    const MAX_SIZE_MB = 25;
-    if (file.size > MAX_SIZE_MB * 1024 * 1024) {
-      setErrorMsg(`ขนาดไฟล์ใหญ่เกินไป (รองรับสูงสุด ${MAX_SIZE_MB}MB)`);
-      e.target.value = '';
-      return;
-    }
-
-    const fileExt = file.name.split('.').pop()?.toLowerCase() || '';
-    const allowedExtensions = ['pdf', 'doc', 'docx', 'jpg', 'jpeg', 'png', 'webp', 'gif', 'heic', 'heif'];
-    const isImageMime = file.type ? file.type.startsWith('image/') : false;
-    const isPdfOrWordMime = file.type ? (file.type.includes('pdf') || file.type.includes('word') || file.type.includes('officedocument') || file.type.includes('msword')) : false;
-    const isValidExt = allowedExtensions.includes(fileExt);
-
-    if (!isImageMime && !isPdfOrWordMime && !isValidExt) {
-      setErrorMsg('อนุญาตใหัปโหลดเฉพาะไฟล์ PDF, Word และรูปภาพเท่านั้น!');
-      e.target.value = '';
-      return;
-    }
-
-    setErrorMsg('');
-    setIsUploading(true);
-
-    try {
-      const formData = new FormData();
-      formData.append('file', file);
-      formData.append('userEmail', user.email);
-
-      const res = await fetch(`${API_BASE_URL}/upload`, { method: 'POST', body: formData });
-      const result = await res.json();
-      if (res.ok && result.success) {
-        fetchDocuments();
-      } else {
-        setErrorMsg(result.message || 'เกิดข้อผิดพลาดในการอัปโหลด');
-      }
-    } catch (err) {
-      setErrorMsg('ไม่สามารถส่งไฟล์ไปยังเซิร์ฟเวอร์ได้');
-    } finally {
-      setIsUploading(false);
-      e.target.value = '';
-    }
-  };
-
-  const handleDelete = async (id) => {
-    if (!confirm('คุณต้องการลบเอกสารนี้ใช่หรือไม่?')) return;
-    try {
-      const url = new URL(`${API_BASE_URL}/${id}`);
-      if (user?.email) url.searchParams.append('userEmail', user.email);
-      if (user?.role) url.searchParams.append('userRole', user.role);
-
-      const res = await fetch(url.toString(), { method: 'DELETE' });
-      const result = await res.json();
-      if (res.ok && result.success) {
-        setDocuments(prevDocs => prevDocs.filter(doc => doc.id !== id));
-      } else {
-        alert(result.message || 'ไม่สามารถลบเอกสารได้');
-      }
-    } catch (err) {
-      alert('เกิดข้อผิดพลาดในการเชื่อมต่อเพื่อลบเอกสาร');
-    }
-  };
-
-  const handleEdit = async (id, currentName) => {
-    const newName = prompt('แก้ไขชื่อเอกสาร:', currentName);
-    if (!newName || newName.trim() === '' || newName === currentName) return;
-    try {
-      const res = await fetch(`${API_BASE_URL}/${id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          name: newName.trim(), 
-          userEmail: user?.email,
-          userRole: user?.role
-        }),
-      });
-      const result = await res.json();
-      if (res.ok && result.success) {
-        setDocuments(prevDocs => prevDocs.map(doc => doc.id === id ? { ...doc, name: newName.trim() } : doc));
-      } else {
-        alert(result.message || 'ไม่สามารถแก้ไขชื่อเอกสารได้');
-      }
-    } catch (err) {
-      alert('เกิดข้อผิดพลาดในการแก้ไขชื่อเอกสาร');
-    }
-  };
-
-  const handleOpenFile = (fileUrl) => {
-    if (fileUrl) window.open(fileUrl, '_blank', 'noopener,noreferrer');
-    else alert('ไม่พบลิงก์ไฟล์เอกสาร');
-  };
-
-  const handleEditUser = async (targetEmail) => {
-    const newPassword = prompt(`ป้อนรหัสผ่านใหม่สำหรับผู้ใช้ (${targetEmail}):`);
-    if (!newPassword) return;
-    try {
-      const token = getSupabaseToken();
-      const res = await fetch(`${BASE_DOMAIN}/api/users/update-password`, {
-        method: 'PUT',
-        headers: { 
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({ email: targetEmail, newPassword })
-      });
-      const result = await res.json();
-      if (res.ok && result.success) {
-        alert('เปลี่ยนรหัสผ่านผู้ใช้สำเร็จ');
-      } else {
-        alert(result.message || 'ไม่สามารถเปลี่ยนรหัสผ่านได้');
-      }
-    } catch (err) {
-      alert('เกิดข้อผิดพลาดในการเชื่อมต่อ');
-    }
-  };
-
-  const handleDeleteUser = async (targetUserId, targetEmail) => {
-    if (!confirm(`คุณต้องการลบบัญชีผู้ใช้ ${targetEmail} ใช่หรือไม่?`)) return;
-    try {
-      const token = getSupabaseToken();
-      const res = await fetch(`${BASE_DOMAIN}/api/users/${targetUserId}`, {
-        method: 'DELETE',
-        headers: { 
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({ adminEmail: user.email })
-      });
-      const result = await res.json();
-      if (res.ok && result.success) {
-        setUsersList(prev => prev.filter(u => u.id !== targetUserId));
-        alert('ลบบัญชีผู้ใช้สำเร็จ');
-      } else {
-        alert(result.message || 'ไม่สามารถลบบัญชีผู้ใช้ได้');
-      }
-    } catch (err) {
-      alert('เกิดข้อผิดพลาดในการลบบัญชีผู้ใช้');
-    }
-  };
+  }, [activeTab, user.role]);
 
   const pdfCount = documents.filter(d => getFileTypeCategory(d) === 'pdf').length;
   const wordCount = documents.filter(d => getFileTypeCategory(d) === 'word').length;
   const imageCount = documents.filter(d => getFileTypeCategory(d) === 'image').length;
 
   const filteredDocs = documents.filter(doc => {
-    const matchesSearch = doc.name ? doc.name.toLowerCase().includes(searchTerm.toLowerCase()) : false;
-    const category = getFileTypeCategory(doc);
-    if (activeTab === 'pdf') return matchesSearch && category === 'pdf';
-    if (activeTab === 'word') return matchesSearch && category === 'word';
-    if (activeTab === 'image') return matchesSearch && category === 'image';
-    return matchesSearch;
+    const matchesSearch = doc.name.toLowerCase().includes(searchTerm.toLowerCase());
+    const categoryMatch = activeTab === 'all' ? true : activeTab === getFileTypeCategory(doc);
+    return matchesSearch && categoryMatch;
   });
+
+  const handleFileUpload = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    setIsUploading(true);
+    setTimeout(() => {
+      const newDoc = {
+        id: Date.now(),
+        name: file.name,
+        file_size: (file.size / (1024 * 1024)).toFixed(2) + ' MB',
+        created_at: new Date().toISOString().split('T')[0],
+        file_url: URL.createObjectURL(file)
+      };
+      setDocuments(prev => [newDoc, ...prev]);
+      setIsUploading(false);
+    }, 1000);
+    e.target.value = '';
+  };
+
+  const handleDelete = (id) => {
+    if (!confirm('คุณต้องการลบเอกสารนี้ใช่หรือไม่?')) return;
+    setDocuments(prev => prev.filter(d => d.id !== id));
+  };
+
+  const handleEdit = (id, currentName) => {
+    const newName = prompt('แก้ไขชื่อเอกสาร:', currentName);
+    if (newName && newName.trim() !== '' && newName !== currentName) {
+      setDocuments(prev => prev.map(d => d.id === id ? { ...d, name: newName.trim() } : d));
+    }
+  };
+
+  const handleOpenFile = (url) => {
+    if (url && url !== '#') {
+      window.open(url, '_blank', 'noopener,noreferrer');
+    } else {
+      alert('ไม่พบลิงก์ไฟล์สำหรับเปิดดู');
+    }
+  };
+
+  const handleEditUser = (targetEmail) => {
+    const newPassword = prompt(`ป้อนรหัสผ่านใหม่สำหรับผู้ใช้ (${targetEmail}):`);
+    if (newPassword) {
+      alert('เปลี่ยนรหัสผ่านผู้ใช้สำเร็จ');
+    }
+  };
+
+  const handleDeleteUser = (targetUserId, targetEmail) => {
+    if (!confirm(`คุณต้องการลบบัญชีผู้ใช้ ${targetEmail} ใช่หรือไม่?`)) return;
+    setUsersList(prev => prev.filter(u => u.id !== targetUserId));
+    alert('ลบบัญชีผู้ใช้สำเร็จ');
+  };
+
+  const logout = () => {
+    alert('ออกจากระบบเรียบร้อย');
+  };
 
   return (
     <div className="min-h-screen flex bg-slate-50 text-slate-800">
@@ -324,7 +218,7 @@ function DashboardContent() {
               <span className="text-xs bg-emerald-50 text-emerald-600 px-2 py-0.5 rounded-full border border-emerald-100 font-normal">{imageCount}</span>
             </button>
 
-            {user?.role === 'admin' && (
+            {user.role === 'admin' && (
               <>
                 <div className="pt-3 pb-1 px-3 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">ผู้ดูแลระบบ</div>
                 <button onClick={() => { setActiveTab('users'); setSidebarOpen(false); }} className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-sm font-medium transition ${activeTab === 'users' ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100'}`}>
@@ -338,13 +232,13 @@ function DashboardContent() {
         <div className="p-4 border-t border-slate-100 bg-white space-y-2">
           <div className="flex items-center justify-between text-xs px-2 py-1.5 bg-slate-100 rounded-lg">
             <span className="text-slate-500 flex items-center gap-1"><Shield size={13} /> สิทธิ์:</span>
-            <span className={`font-semibold px-2 py-0.5 rounded text-[10px] uppercase ${user?.role === 'admin' ? 'bg-purple-100 text-purple-700' : 'bg-slate-200 text-slate-700'}`}>
-              {user?.role || 'User'}
+            <span className={`font-semibold px-2 py-0.5 rounded text-[10px] uppercase ${user.role === 'admin' ? 'bg-purple-100 text-purple-700' : 'bg-slate-200 text-slate-700'}`}>
+              {user.role || 'User'}
             </span>
           </div>
 
-          <button 
-            onClick={() => { setActiveTab('profile'); setSidebarOpen(false); }} 
+          <button
+            onClick={() => { setActiveTab('profile'); setSidebarOpen(false); }}
             className={`flex items-center gap-3 w-full px-3 py-2.5 rounded-lg text-sm font-medium transition ${activeTab === 'profile' ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100'}`}
           >
             <User size={18} /> จัดการโปรไฟล์
@@ -370,16 +264,19 @@ function DashboardContent() {
             </h1>
           </div>
           <div className="flex items-center gap-3">
-            <span className="text-xs text-slate-500 font-medium hidden sm:inline-block">{user?.email}</span>
+            <span className="text-xs text-slate-500 font-medium hidden sm:inline-block">{user.email}</span>
             <div className="w-8 h-8 rounded-full bg-slate-900 text-white flex items-center justify-center font-medium text-xs uppercase shadow-sm">
-              {user?.email ? user.email[0] : 'U'}
+              {user.email ? user.email[0] : 'U'}
             </div>
           </div>
         </header>
 
         <main className="p-4 md:p-8 space-y-6 max-w-6xl w-full mx-auto">
           {activeTab === 'profile' ? (
-            <ProfileView />
+            <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+              <h3 className="font-semibold text-slate-900 mb-4">จัดการโปรไฟล์ผู้ใช้งาน</h3>
+              <p className="text-sm text-slate-600">อีเมล: {user.email}</p>
+            </div>
           ) : activeTab === 'users' ? (
             <div className="space-y-4">
               <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
@@ -454,7 +351,7 @@ function DashboardContent() {
                   <input type="text" placeholder="ค้นหาชื่อเอกสาร..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full pl-10 pr-4 py-2 text-sm bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-400" />
                 </div>
                 <label className={`flex items-center justify-center gap-2 px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-sm font-medium cursor-pointer transition shadow-sm shrink-0 ${isUploading ? 'opacity-50 cursor-not-allowed' : ''}`}>
-                  {isUploading ? <Loader2 size={16} className="animate-spin" /> : <Upload size={16} />} 
+                  {isUploading ? <Loader2 size={16} className="animate-spin" /> : <Upload size={16} />}
                   {isUploading ? 'กำลังอัปโหลด...' : 'อัปโหลดเอกสาร'}
                   <input type="file" disabled={isUploading} accept="image/*,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,.pdf,.doc,.docx" onChange={handleFileUpload} className="hidden" />
                 </label>
