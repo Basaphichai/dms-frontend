@@ -4,16 +4,15 @@ export default function CookieConsent() {
   const [isVisible, setIsVisible] = useState(false);
 
   useEffect(() => {
-    // เช็กว่าผู้ใช้เคยกด "ยอมรับ" ไปแล้วหรือยัง
     const consent = localStorage.getItem('cookie_consent');
     if (!consent) {
-      setIsVisible(true); // ถ้ายังไม่เคย ให้แสดงแถียบคุกกี้ขึ้นมา
+      setIsVisible(true);
     }
   }, []);
 
   const handleAccept = () => {
-    localStorage.setItem('cookie_consent', 'true'); // บันทึกสถานะว่ายอมรับแล้ว
-    setIsVisible(false); // ซ่อนแถบ
+    localStorage.setItem('cookie_consent', 'true');
+    setIsVisible(false);
   };
 
   if (!isVisible) return null;
@@ -22,8 +21,11 @@ export default function CookieConsent() {
     <div style={styles.banner}>
       <div style={styles.content}>
         <p style={styles.text}>
-          เว็บไซต์นี้มีการใช้งานคุกกี้ (Cookies) เพื่อเพิ่มประสบการณ์การใช้งานที่ดี and วิเคราะห์การเข้าชมเว็บไซต์ 
-          อ่านเพิ่มเติมได้ที่ <a href="/privacy-policy" style={styles.link}>นโยบายความเป็นส่วนตัว</a>
+          เว็บไซต์นี้มีการใช้งานคุกกี้ (Cookies) เพื่อเพิ่มประสบการณ์การใช้งานที่ดี และวิเคราะห์การเข้าชมเว็บไซต์ อ่านเพิ่มเติมได้ที่{' '}
+          {/* 🟢 ลิงก์วิ่งไปหน้า Privacy Policy */}
+          <a href="/privacy-policy" style={styles.link}>
+            นโยบายความเป็นส่วนตัว
+          </a>
         </p>
         <button onClick={handleAccept} style={styles.button}>
           ยอมรับทั้งหมด
@@ -33,7 +35,7 @@ export default function CookieConsent() {
   );
 }
 
-// สไตล์การตกแต่งแถพคุกกี้ (สามารถปรับเปลี่ยน CSS ได้ตามต้องการ)
+// (สไตล์เดิมคงไว้ตามเดิมได้เลยครับ)
 const styles = {
   banner: {
     position: 'fixed',
