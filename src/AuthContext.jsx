@@ -15,6 +15,34 @@ export function AuthProvider({ children }) {
   const [token, setToken] = useState(null);
   const [loading, setLoading] = useState(true);
 
+  // ฟังก์ชันช่วยดึงข้อมูล role จากตาราง profiles เพิ่มเติม
+  const fetchUserProfile = async (sessionUser) => {
+    if (!sessionUser) return null;
+
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', sessionUser.id)
+        .single();
+
+      return {
+        id: sessionUser.id,
+        email: sessionUser.email,
+        name: sessionUser.user_metadata?.full_name || sessionUser.email.split('@')[0],
+        role: data?.role || 'user', // ดึง role จากตาราง profiles ถ้าไม่มีให้เป็น 'user'
+      };
+    } catch (err) {
+      console.error('Error fetching user profile role:', err);
+      return {
+        id: sessionUser.id,
+        email: sessionUser.email,
+        name: sessionUser.user_metadata?.full_name || sessionUser.email.split('@')[0],
+        role: 'user',
+      };
+    }
+  };
+
   useEffect(() => {
     // 1. ตรวจสอบ Session จาก Supabase เมื่อโหลดหน้าเว็บ
     const initAuth = async () => {
@@ -22,11 +50,8 @@ export function AuthProvider({ children }) {
       
       if (session) {
         setToken(session.access_token);
-        setUser({
-          id: session.user.id,
-          email: session.user.email,
-          name: session.user.user_metadata?.full_name || session.user.email.split('@')[0],
-        });
+        const enrichedUser = await fetchUserProfile(session.user);
+        setUser(enrichedUser);
       }
       setLoading(false);
     };
@@ -34,14 +59,11 @@ export function AuthProvider({ children }) {
     initAuth();
 
     // 2. ดักฟัง Event เปลี่ยนแปลงสถานะ Auth (เช่น Login, Logout, Session หมดอายุ)
-    const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: authListener } = supabase.auth.onAuthStateChange(async (_event, session) => {
       if (session) {
         setToken(session.access_token);
-        setUser({
-          id: session.user.id,
-          email: session.user.email,
-          name: session.user.user_metadata?.full_name || session.user.email.split('@')[0],
-        });
+        const enrichedUser = await fetchUserProfile(session.user);
+        setUser(enrichedUser);
       } else {
         setToken(null);
         setUser(null);
@@ -62,7 +84,6 @@ export function AuthProvider({ children }) {
     });
 
     if (error) {
-      // แปลงข้อความ Error จาก Supabase เป็นภาษาไทยที่อ่านง่าย
       if (error.message.includes('Invalid login credentials')) {
         throw new Error('อีเมลหรือรหัสผ่านไม่ถูกต้อง');
       }
@@ -82,7 +103,7 @@ export function AuthProvider({ children }) {
       password,
       options: {
         data: {
-          full_name: name, // บันทึกชื่อ-นามสกุลเข้าไปใน User Metadata
+          full_name: name,
         },
       },
     });
