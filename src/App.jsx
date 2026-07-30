@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { BrowserRouter, Routes, Route } from 'react-router-dom'; // 🟢 นำเข้า Router
+import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { AuthProvider, useAuth } from './AuthContext';
 import LoginForm from './LoginForm';
 import CookieConsent from './components/CookieConsent';
-import PrivacyPolicy from './PrivacyPolicy'; // 🟢 นำเข้าหน้าเพจนโยบาย
+import PrivacyPolicy from './PrivacyPolicy';
 import { 
   FileText, 
   Image as ImageIcon, 
@@ -184,7 +184,8 @@ function DashboardContent() {
         <div onClick={() => setSidebarOpen(false)} className="fixed inset-0 bg-slate-900/40 z-40 md:hidden backdrop-blur-sm transition-opacity" />
       )}
 
-      <aside className={`fixed inset-y-0 left-0 z-50 w-64 bg-white border-r border-slate-200 transform transition-transform duration-300 ease-in-out ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} md:relative md:translate-x-0 flex flex-col justify-between`}>
+      {/* 🟢 ปรับปรุงแถบ Sidebar ให้เป็นแบบ Sticky ค้างติดหน้าจอและจัดปุ่มออกจากระบบไว้ล่างสุดด้วย flex flex-col justify-between */}
+      <aside className={`fixed inset-y-0 left-0 z-50 w-64 bg-white border-r border-slate-200 transform transition-transform duration-300 ease-in-out ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} md:sticky md:top-0 md:translate-x-0 h-screen flex flex-col justify-between shrink-0`}>
         <div>
           <div className="h-16 flex items-center justify-between px-6 border-b border-slate-100">
             <div className="flex items-center gap-2.5 font-bold text-slate-900 text-base">
@@ -219,7 +220,8 @@ function DashboardContent() {
           </nav>
         </div>
 
-        <div className="p-4 border-t border-slate-100">
+        {/* 🟢 ปุ่มออกจากระบบจะถูกยึดติดอยู่มุมล่างซ้ายเสมอ */}
+        <div className="p-4 border-t border-slate-100 bg-white">
           <button onClick={logout} className="flex items-center gap-3 w-full px-3 py-2.5 text-slate-500 hover:text-red-600 hover:bg-red-50 rounded-lg text-sm font-medium transition"><LogOut size={18} /> ออกจากระบบ</button>
         </div>
       </aside>
