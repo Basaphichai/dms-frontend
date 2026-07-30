@@ -42,6 +42,25 @@ const getFileTypeCategory = (doc) => {
   return 'other';
 };
 
+// ฟังก์ชันช่วยดึง Token จาก Supabase Session ใน LocalStorage
+const getSupabaseToken = () => {
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith('sb-') && key.endsWith('-auth-token')) {
+        const item = localStorage.getItem(key);
+        if (item) {
+          const parsed = JSON.parse(item);
+          if (parsed?.access_token) return parsed.access_token;
+        }
+      }
+    }
+  } catch (e) {
+    console.error('Error getting token:', e);
+  }
+  return '';
+};
+
 function DashboardContent() {
   const { user, logout } = useAuth();
   const [documents, setDocuments] = useState([]);
@@ -208,12 +227,12 @@ function DashboardContent() {
     const newPassword = prompt(`ป้อนรหัสผ่านใหม่สำหรับผู้ใช้ (${targetEmail}):`);
     if (!newPassword) return;
     try {
-      const sessionToken = localStorage.getItem('supabase.auth.token');
+      const token = getSupabaseToken();
       const res = await fetch(`${BASE_DOMAIN}/api/users/update-password`, {
         method: 'PUT',
         headers: { 
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${user?.token || sessionToken || ''}`
+          'Authorization': `Bearer ${token}`
         },
         body: JSON.stringify({ email: targetEmail, newPassword })
       });
@@ -231,12 +250,12 @@ function DashboardContent() {
   const handleDeleteUser = async (targetUserId, targetEmail) => {
     if (!confirm(`คุณต้องการลบบัญชีผู้ใช้ ${targetEmail} ใช่หรือไม่?`)) return;
     try {
-      const sessionToken = localStorage.getItem('supabase.auth.token');
+      const token = getSupabaseToken();
       const res = await fetch(`${BASE_DOMAIN}/api/users/${targetUserId}`, {
         method: 'DELETE',
         headers: { 
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${user?.token || sessionToken || ''}`
+          'Authorization': `Bearer ${token}`
         },
         body: JSON.stringify({ adminEmail: user.email })
       });
