@@ -1,119 +1,339 @@
 import React, { useState, useEffect } from 'react';
-import {
-  Folder, FileText, ImageIcon, Upload, Trash2, Edit3,
-  Search, Shield, User, LogOut, Menu, X, ExternalLink,
-  LayoutDashboard, Users, Loader2, Eye
+import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { AuthProvider, useAuth } from './AuthContext';
+import LoginForm from './LoginForm';
+import CookieConsent from './components/CookieConsent';
+import PrivacyPolicy from './PrivacyPolicy';
+import ProfileView from './ProfileView';
+import { 
+  FileText, 
+  Image as ImageIcon, 
+  Upload, 
+  Trash2, 
+  Edit3, 
+  Eye, 
+  Search, 
+  LayoutDashboard, 
+  Folder, 
+  LogOut, 
+  Menu, 
+  X,
+  Loader2,
+  User,
+  Shield,
+  Users,
+  ExternalLink
 } from 'lucide-react';
 
-function getFileTypeCategory(doc) {
+const BASE_DOMAIN = 'https://dms-backend-gf47.onrender.com';
+const API_BASE_URL = `${BASE_DOMAIN}/api/documents`;
+
+const getFileTypeCategory = (doc) => {
+  const mime = (doc.file_type || doc.type || '').toLowerCase();
   const name = (doc.name || '').toLowerCase();
-  if (name.endsWith('.pdf')) return 'pdf';
-  if (name.endsWith('.png') || name.endsWith('.jpg') || name.endsWith('.jpeg')) return 'image';
-  return 'word';
-}
+  const ext = name.split('.').pop() || '';
 
-export default function App() {
-  const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState('all');
-  const [documents, setDocuments] = useState([]);
-  const [loadingDocs, setLoadingDocs] = useState(false);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [isUploading, setIsUploading] = useState(false);
-  const [errorMsg, setErrorMsg] = useState('');
+  const imageExts = ['jpg', 'jpeg', 'png', 'webp', 'gif', 'heic', 'heif', 'svg', 'bmp'];
+  const wordExts = ['doc', 'docx'];
+  const pdfExts = ['pdf'];
 
-  const [user] = useState({ email: 'aphichaichiaraksa@gmail.com', role: 'admin' });
-  const [usersList, setUsersList] = useState([]);
-  const [loadingUsers, setLoadingUsers] = useState(false);
+  if (mime.startsWith('image/') || imageExts.includes(ext)) return 'image';
+  if (mime.includes('pdf') || pdfExts.includes(ext)) return 'pdf';
+  if (mime.includes('word') || mime.includes('msword') || mime.includes('officedocument') || wordExts.includes(ext)) return 'word';
+  return 'other';
+};
 
-  // Load mock documents on first render
-  useEffect(() => {
-    setDocuments([
-      { id: 1, name: 'ครุฑ.png', file_size: '0.03 MB', created_at: '2026-07-30', file_url: '#' },
-      { id: 2, name: 'template_13 คำสั่ง.dot', file_size: '0.07 MB', created_at: '2026-07-30', file_url: '#' },
-      { id: 3, name: 'ประกาศการรับสมัครทหารกองประจำการสายวิทยาการ...', file_size: '3.77 MB', created_at: '2026-07-30', file_url: '#' },
-      { id: 4, name: '260324_แคตตาล็อกสินค้า CAT final.pdf', file_size: '4.94 MB', created_at: '2026-07-29', file_url: '#' }
-    ]);
-  }, []);
-
-  // Load mock users whenever the admin opens the "users" tab
-  useEffect(() => {
-    if (activeTab === 'users' && user.role === 'admin') {
-      setLoadingUsers(true);
-      const timer = setTimeout(() => {
-        setUsersList([
-          { id: 'u1', email: 'aphichaichiaraksa@gmail.com', role: 'admin', created_at: '2026-01-15' },
-          { id: 'u2', email: 'somchai@example.com', role: 'user', created_at: '2026-03-02' }
-        ]);
-        setLoadingUsers(false);
-      }, 500);
-      return () => clearTimeout(timer);
+const getSupabaseToken = () => {
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith('sb-') && key.endsWith('-auth-token')) {
+        const item = localStorage.getItem(key);
+        if (item) {
+          const parsed = JSON.parse(item);
+          if (parsed?.access_token) return parsed.access_token;
+        }
+      }
     }
-  }, [activeTab, user.role]);
+  } catch (e) {
+    console.error('Error getting token:', e);
+  }
+  return '';
+};
+
+function DashboardContent() {
+  const { user, logout } = useAuth();
+  const [documents, setDocuments] = useState([]);
+  const [usersList, setUsersList] = useState([]);
+  const [loadingDocs, setLoadingDocs] = useState(true);
+  const [loadingUsers, setLoadingUsers] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [errorMsg, setErrorMsg] = useState('');
+  const [activeTab, setActiveTab] = useState('all');
+
+  const [dateFilter, setDateFilter] = useState('all');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+  const [sortBy, setSortBy] = useState('date-desc');
+
+  // State สำหรับจัดการ Modal Preview ไฟล์
+  const [previewFile, setPreviewFile] = useState(null);
+
+  const fetchDocuments = async () => {
+    if (!user?.email) return;
+    try {
+      setLoadingDocs(true);
+      setErrorMsg('');
+      const url = new URL(API_BASE_URL);
+      
+      url.searchParams.append('userEmail', user.email);
+      if (user?.role) {
+        url.searchParams.append('userRole', user.role);
+      }
+
+      const res = await fetch(url.toString());
+      const result = await res.json();
+      if (res.ok && result.success) {
+        setDocuments(result.data || []);
+      } else {
+        setErrorMsg(result.message || 'ไม่สามารถดึงข้อมูลเอกสารได้');
+      }
+    } catch (err) {
+      setErrorMsg('เกิดข้อผิดพลาดในการเชื่อมต่อกับเซิร์ฟเวอร์');
+    } finally {
+      setLoadingDocs(false);
+    }
+  };
+
+  const fetchUsers = async () => {
+    if (user?.role !== 'admin') return;
+    try {
+      setLoadingUsers(true);
+      const res = await fetch(`${BASE_DOMAIN}/api/users`);
+      const result = await res.json();
+      if (res.ok && result.success) {
+        setUsersList(result.data || []);
+      }
+    } catch (err) {
+      console.error('Error fetching users:', err);
+    } finally {
+      setLoadingUsers(false);
+    }
+  };
+
+  useEffect(() => {
+    if (user?.email) fetchDocuments();
+  }, [user?.email, user?.role]);
+
+  useEffect(() => {
+    if (activeTab === 'users' && user?.role === 'admin') {
+      fetchUsers();
+    }
+  }, [activeTab, user?.role]);
+
+  const handleFileUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    if (!user?.email) {
+      setErrorMsg('ไม่พบข้อมูลอีเมลผู้ใช้ กรุณาล็อกอินใหม่อีกครั้ง');
+      return;
+    }
+
+    const MAX_SIZE_MB = 25;
+    if (file.size > MAX_SIZE_MB * 1024 * 1024) {
+      setErrorMsg(`ขนาดไฟล์ใหญ่เกินไป (รองรับสูงสุด ${MAX_SIZE_MB}MB)`);
+      e.target.value = '';
+      return;
+    }
+
+    const fileExt = file.name.split('.').pop()?.toLowerCase() || '';
+    const allowedExtensions = ['pdf', 'doc', 'docx', 'jpg', 'jpeg', 'png', 'webp', 'gif', 'heic', 'heif'];
+    const isImageMime = file.type ? file.type.startsWith('image/') : false;
+    const isPdfOrWordMime = file.type ? (file.type.includes('pdf') || file.type.includes('word') || file.type.includes('officedocument') || file.type.includes('msword')) : false;
+    const isValidExt = allowedExtensions.includes(fileExt);
+
+    if (!isImageMime && !isPdfOrWordMime && !isValidExt) {
+      setErrorMsg('อนุญาตใหัปโหลดเฉพาะไฟล์ PDF, Word และรูปภาพเท่านั้น!');
+      e.target.value = '';
+      return;
+    }
+
+    setErrorMsg('');
+    setIsUploading(true);
+
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('userEmail', user.email);
+
+      const res = await fetch(`${API_BASE_URL}/upload`, { method: 'POST', body: formData });
+      const result = await res.json();
+      if (res.ok && result.success) {
+        fetchDocuments();
+      } else {
+        setErrorMsg(result.message || 'เกิดข้อผิดพลาดในการอัปโหลด');
+      }
+    } catch (err) {
+      setErrorMsg('ไม่สามารถส่งไฟล์ไปยังเซิร์ฟเวอร์ได้');
+    } finally {
+      setIsUploading(false);
+      e.target.value = '';
+    }
+  };
+
+  const handleDelete = async (id) => {
+    if (!confirm('คุณต้องการลบเอกสารนี้ใช่หรือไม่?')) return;
+    try {
+      const url = new URL(`${API_BASE_URL}/${id}`);
+      if (user?.email) url.searchParams.append('userEmail', user.email);
+      if (user?.role) url.searchParams.append('userRole', user.role);
+
+      const res = await fetch(url.toString(), { method: 'DELETE' });
+      const result = await res.json();
+      if (res.ok && result.success) {
+        setDocuments(prevDocs => prevDocs.filter(doc => doc.id !== id));
+      } else {
+        alert(result.message || 'ไม่สามารถลบเอกสารได้');
+      }
+    } catch (err) {
+      alert('เกิดข้อผิดพลาดในการเชื่อมต่อเพื่อลบเอกสาร');
+    }
+  };
+
+  const handleEdit = async (id, currentName) => {
+    const newName = prompt('แก้ไขชื่อเอกสาร:', currentName);
+    if (!newName || newName.trim() === '' || newName === currentName) return;
+    try {
+      const res = await fetch(`${API_BASE_URL}/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          name: newName.trim(), 
+          userEmail: user?.email,
+          userRole: user?.role
+        }),
+      });
+      const result = await res.json();
+      if (res.ok && result.success) {
+        setDocuments(prevDocs => prevDocs.map(doc => doc.id === id ? { ...doc, name: newName.trim() } : doc));
+      } else {
+        alert(result.message || 'ไม่สามารถแก้ไขชื่อเอกสารได้');
+      }
+    } catch (err) {
+      alert('เกิดข้อผิดพลาดในการแก้ไขชื่อเอกสาร');
+    }
+  };
+
+  // ฟังก์ชันจัดการคลิกดูไฟล์ (เปิด Modal พรีวิวเฉพาะรูปภาพและ PDF ส่วนไฟล์อื่นให้เปิดแท็บใหม่)
+  const handlePreviewClick = (doc) => {
+    const category = getFileTypeCategory(doc);
+    if ((category === 'image' || category === 'pdf') && doc.file_url) {
+      setPreviewFile(doc);
+    } else if (doc.file_url) {
+      window.open(doc.file_url, '_blank', 'noopener,noreferrer');
+    } else {
+      alert('ไม่พบลิงก์ไฟล์เอกสาร');
+    }
+  };
+
+  const handleEditUser = async (targetEmail) => {
+    const newPassword = prompt(`ป้อนรหัสผ่านใหม่สำหรับผู้ใช้ (${targetEmail}):`);
+    if (!newPassword) return;
+    try {
+      const token = getSupabaseToken();
+      const res = await fetch(`${BASE_DOMAIN}/api/users/update-password`, {
+        method: 'PUT',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ email: targetEmail, newPassword })
+      });
+      const result = await res.json();
+      if (res.ok && result.success) {
+        alert('เปลี่ยนรหัสผ่านผู้ใช้สำเร็จ');
+      } else {
+        alert(result.message || 'ไม่สามารถเปลี่ยนรหัสผ่านได้');
+      }
+    } catch (err) {
+      alert('เกิดข้อผิดพลาดในการเชื่อมต่อ');
+    }
+  };
+
+  const handleDeleteUser = async (targetUserId, targetEmail) => {
+    if (!confirm(`คุณต้องการลบบัญชีผู้ใช้ ${targetEmail} ใช่หรือไม่?`)) return;
+    try {
+      const token = getSupabaseToken();
+      const res = await fetch(`${BASE_DOMAIN}/api/users/${targetUserId}`, {
+        method: 'DELETE',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ adminEmail: user.email })
+      });
+      const result = await res.json();
+      if (res.ok && result.success) {
+        setUsersList(prev => prev.filter(u => u.id !== targetUserId));
+        alert('ลบบัญชีผู้ใช้สำเร็จ');
+      } else {
+        alert(result.message || 'ไม่สามารถลบบัญชีผู้ใช้ได้');
+      }
+    } catch (err) {
+      alert('เกิดข้อผิดพลาดในการลบบัญชีผู้ใช้');
+    }
+  };
 
   const pdfCount = documents.filter(d => getFileTypeCategory(d) === 'pdf').length;
   const wordCount = documents.filter(d => getFileTypeCategory(d) === 'word').length;
   const imageCount = documents.filter(d => getFileTypeCategory(d) === 'image').length;
 
   const filteredDocs = documents.filter(doc => {
-    const matchesSearch = doc.name.toLowerCase().includes(searchTerm.toLowerCase());
-    const categoryMatch = activeTab === 'all' ? true : activeTab === getFileTypeCategory(doc);
-    return matchesSearch && categoryMatch;
+    const matchesSearch = doc.name ? doc.name.toLowerCase().includes(searchTerm.toLowerCase()) : false;
+    const category = getFileTypeCategory(doc);
+    const matchesTab = activeTab === 'all' || category === activeTab;
+
+    if (!matchesSearch || !matchesTab) return false;
+
+    if (dateFilter !== 'all' && doc.created_at) {
+      const docDate = new Date(doc.created_at);
+      const now = new Date();
+
+      if (dateFilter === 'week') {
+        const oneWeekAgo = new Date();
+        oneWeekAgo.setDate(now.getDate() - 7);
+        if (docDate < oneWeekAgo) return false;
+      } else if (dateFilter === 'month') {
+        const oneMonthAgo = new Date();
+        oneMonthAgo.setMonth(now.getMonth() - 1);
+        if (docDate < oneMonthAgo) return false;
+      } else if (dateFilter === 'custom') {
+        if (startDate && docDate < new Date(startDate)) return false;
+        if (endDate) {
+          const endDateTime = new Date(endDate);
+          endDateTime.setHours(23, 59, 59, 999);
+          if (docDate > endDateTime) return false;
+        }
+      }
+    }
+
+    return true;
+  }).sort((a, b) => {
+    if (sortBy === 'name-asc') {
+      return (a.name || '').localeCompare(b.name || '');
+    } else if (sortBy === 'size-desc') {
+      const sizeA = parseFloat(a.file_size || a.size) || 0;
+      const sizeB = parseFloat(b.file_size || b.size) || 0;
+      return sizeB - sizeA;
+    } else if (sortBy === 'date-desc') {
+      const dateA = new Date(a.created_at || 0);
+      const dateB = new Date(b.created_at || 0);
+      return dateB - dateA;
+    }
+    return 0;
   });
-
-  const handleFileUpload = (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    setIsUploading(true);
-    setTimeout(() => {
-      const newDoc = {
-        id: Date.now(),
-        name: file.name,
-        file_size: (file.size / (1024 * 1024)).toFixed(2) + ' MB',
-        created_at: new Date().toISOString().split('T')[0],
-        file_url: URL.createObjectURL(file)
-      };
-      setDocuments(prev => [newDoc, ...prev]);
-      setIsUploading(false);
-    }, 1000);
-    e.target.value = '';
-  };
-
-  const handleDelete = (id) => {
-    if (!confirm('คุณต้องการลบเอกสารนี้ใช่หรือไม่?')) return;
-    setDocuments(prev => prev.filter(d => d.id !== id));
-  };
-
-  const handleEdit = (id, currentName) => {
-    const newName = prompt('แก้ไขชื่อเอกสาร:', currentName);
-    if (newName && newName.trim() !== '' && newName !== currentName) {
-      setDocuments(prev => prev.map(d => d.id === id ? { ...d, name: newName.trim() } : d));
-    }
-  };
-
-  const handleOpenFile = (url) => {
-    if (url && url !== '#') {
-      window.open(url, '_blank', 'noopener,noreferrer');
-    } else {
-      alert('ไม่พบลิงก์ไฟล์สำหรับเปิดดู');
-    }
-  };
-
-  const handleEditUser = (targetEmail) => {
-    const newPassword = prompt(`ป้อนรหัสผ่านใหม่สำหรับผู้ใช้ (${targetEmail}):`);
-    if (newPassword) {
-      alert('เปลี่ยนรหัสผ่านผู้ใช้สำเร็จ');
-    }
-  };
-
-  const handleDeleteUser = (targetUserId, targetEmail) => {
-    if (!confirm(`คุณต้องการลบบัญชีผู้ใช้ ${targetEmail} ใช่หรือไม่?`)) return;
-    setUsersList(prev => prev.filter(u => u.id !== targetUserId));
-    alert('ลบบัญชีผู้ใช้สำเร็จ');
-  };
-
-  const logout = () => {
-    alert('ออกจากระบบเรียบร้อย');
-  };
 
   return (
     <div className="min-h-screen flex bg-slate-50 text-slate-800">
@@ -155,7 +375,7 @@ export default function App() {
               <span className="text-xs bg-emerald-50 text-emerald-600 px-2 py-0.5 rounded-full border border-emerald-100 font-normal">{imageCount}</span>
             </button>
 
-            {user.role === 'admin' && (
+            {user?.role === 'admin' && (
               <>
                 <div className="pt-3 pb-1 px-3 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">ผู้ดูแลระบบ</div>
                 <button onClick={() => { setActiveTab('users'); setSidebarOpen(false); }} className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-sm font-medium transition ${activeTab === 'users' ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100'}`}>
@@ -169,13 +389,13 @@ export default function App() {
         <div className="p-4 border-t border-slate-100 bg-white space-y-2">
           <div className="flex items-center justify-between text-xs px-2 py-1.5 bg-slate-100 rounded-lg">
             <span className="text-slate-500 flex items-center gap-1"><Shield size={13} /> สิทธิ์:</span>
-            <span className={`font-semibold px-2 py-0.5 rounded text-[10px] uppercase ${user.role === 'admin' ? 'bg-purple-100 text-purple-700' : 'bg-slate-200 text-slate-700'}`}>
-              {user.role || 'User'}
+            <span className={`font-semibold px-2 py-0.5 rounded text-[10px] uppercase ${user?.role === 'admin' ? 'bg-purple-100 text-purple-700' : 'bg-slate-200 text-slate-700'}`}>
+              {user?.role || 'User'}
             </span>
           </div>
 
-          <button
-            onClick={() => { setActiveTab('profile'); setSidebarOpen(false); }}
+          <button 
+            onClick={() => { setActiveTab('profile'); setSidebarOpen(false); }} 
             className={`flex items-center gap-3 w-full px-3 py-2.5 rounded-lg text-sm font-medium transition ${activeTab === 'profile' ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100'}`}
           >
             <User size={18} /> จัดการโปรไฟล์
@@ -201,19 +421,16 @@ export default function App() {
             </h1>
           </div>
           <div className="flex items-center gap-3">
-            <span className="text-xs text-slate-500 font-medium hidden sm:inline-block">{user.email}</span>
+            <span className="text-xs text-slate-500 font-medium hidden sm:inline-block">{user?.email}</span>
             <div className="w-8 h-8 rounded-full bg-slate-900 text-white flex items-center justify-center font-medium text-xs uppercase shadow-sm">
-              {user.email ? user.email[0] : 'U'}
+              {user?.email ? user.email[0] : 'U'}
             </div>
           </div>
         </header>
 
         <main className="p-4 md:p-8 space-y-6 max-w-6xl w-full mx-auto">
           {activeTab === 'profile' ? (
-            <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
-              <h3 className="font-semibold text-slate-900 mb-4">จัดการโปรไฟล์ผู้ใช้งาน</h3>
-              <p className="text-sm text-slate-600">อีเมล: {user.email}</p>
-            </div>
+            <ProfileView />
           ) : activeTab === 'users' ? (
             <div className="space-y-4">
               <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
@@ -288,10 +505,62 @@ export default function App() {
                   <input type="text" placeholder="ค้นหาชื่อเอกสาร..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full pl-10 pr-4 py-2 text-sm bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-400" />
                 </div>
                 <label className={`flex items-center justify-center gap-2 px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-sm font-medium cursor-pointer transition shadow-sm shrink-0 ${isUploading ? 'opacity-50 cursor-not-allowed' : ''}`}>
-                  {isUploading ? <Loader2 size={16} className="animate-spin" /> : <Upload size={16} />}
+                  {isUploading ? <Loader2 size={16} className="animate-spin" /> : <Upload size={16} />} 
                   {isUploading ? 'กำลังอัปโหลด...' : 'อัปโหลดเอกสาร'}
                   <input type="file" disabled={isUploading} accept="image/*,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,.pdf,.doc,.docx" onChange={handleFileUpload} className="hidden" />
                 </label>
+              </div>
+
+              {/* แผงควบคุม Advanced Search & Sorting */}
+              <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm space-y-3">
+                <div className="flex flex-col lg:flex-row gap-3 justify-between items-stretch lg:items-center">
+                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-semibold text-slate-500 shrink-0">ช่วงเวลา:</span>
+                      <select 
+                        value={dateFilter} 
+                        onChange={(e) => setDateFilter(e.target.value)}
+                        className="w-full sm:w-auto text-xs bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-slate-900"
+                      >
+                        <option value="all">ทั้งหมด</option>
+                        <option value="week">สัปดาห์นี้ (7 วันล่าสุด)</option>
+                        <option value="month">เดือนนี้ (30 วันล่าสุด)</option>
+                        <option value="custom">กำหนดเอง</option>
+                      </select>
+                    </div>
+
+                    {dateFilter === 'custom' && (
+                      <div className="flex items-center gap-1.5 mt-1 sm:mt-0">
+                        <input 
+                          type="date" 
+                          value={startDate} 
+                          onChange={(e) => setStartDate(e.target.value)}
+                          className="w-full sm:w-auto text-xs bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5" 
+                        />
+                        <span className="text-xs text-slate-400 shrink-0">ถึง</span>
+                        <input 
+                          type="date" 
+                          value={endDate} 
+                          onChange={(e) => setEndDate(e.target.value)}
+                          className="w-full sm:w-auto text-xs bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5" 
+                        />
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="flex items-center gap-2 justify-between sm:justify-end">
+                    <span className="text-xs font-semibold text-slate-500 shrink-0">เรียงตาม:</span>
+                    <select 
+                      value={sortBy} 
+                      onChange={(e) => setSortBy(e.target.value)}
+                      className="w-full sm:w-auto text-xs bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-slate-900"
+                    >
+                      <option value="date-desc">วันที่อัปโหลด (ใหม่-เก่า)</option>
+                      <option value="name-asc">ชื่อเอกสาร (A-Z)</option>
+                      <option value="size-desc">ขนาดไฟล์ (ใหญ่-เล็ก)</option>
+                    </select>
+                  </div>
+                </div>
               </div>
 
               {errorMsg && (
@@ -324,19 +593,19 @@ export default function App() {
                             <tr key={doc.id} className="hover:bg-slate-50/80 transition">
                               <td className="px-4 md:px-6 py-4 font-medium text-slate-900 flex items-center gap-3">
                                 {category === 'image' && doc.file_url ? (
-                                  <img src={doc.file_url} alt={doc.name} className="w-10 h-10 object-cover rounded-md border border-slate-200 shrink-0 shadow-sm hover:scale-105 transition cursor-pointer" onClick={() => handleOpenFile(doc.file_url)} />
+                                  <img src={doc.file_url} alt={doc.name} className="w-10 h-10 object-cover rounded-md border border-slate-200 shrink-0 shadow-sm hover:scale-105 transition cursor-pointer" onClick={() => handlePreviewClick(doc)} />
                                 ) : category === 'pdf' ? (
                                   <FileText size={18} className="shrink-0 text-red-500" />
                                 ) : (
                                   <FileText size={18} className="shrink-0 text-blue-500" />
                                 )}
-                                <span className="truncate max-w-[180px] sm:max-w-xs">{doc.name}</span>
+                                <span className="truncate max-w-[180px] sm:max-w-xs cursor-pointer hover:text-slate-900 hover:underline" onClick={() => handlePreviewClick(doc)} title="คลิกเพื่อพรีวิว">{doc.name}</span>
                               </td>
                               <td className="px-4 md:px-6 py-4 text-slate-500 text-xs">{displaySize}</td>
                               <td className="px-4 md:px-6 py-4 text-slate-500 text-xs">{displayDate}</td>
                               <td className="px-4 md:px-6 py-4 text-right">
                                 <div className="flex items-center justify-end gap-1 sm:gap-2">
-                                  <button onClick={() => handleOpenFile(doc.file_url)} className="p-1.5 hover:bg-slate-100 text-slate-600 rounded-md transition" title="เปิดไฟล์"><Eye size={16} /></button>
+                                  <button onClick={() => handlePreviewClick(doc)} className="p-1.5 hover:bg-slate-100 text-slate-600 rounded-md transition" title="พรีวิวไฟล์"><Eye size={16} /></button>
                                   <button onClick={() => handleEdit(doc.id, doc.name)} className="p-1.5 hover:bg-slate-100 text-slate-600 rounded-md transition" title="แก้ไขชื่อ"><Edit3 size={16} /></button>
                                   <button onClick={() => handleDelete(doc.id)} className="p-1.5 hover:bg-red-50 text-red-600 rounded-md transition" title="ลบเอกสาร"><Trash2 size={16} /></button>
                                 </div>
@@ -355,6 +624,65 @@ export default function App() {
           )}
         </main>
       </div>
+
+      {/* File Preview Modal (หน้าต่างป๊อปอัปสำหรับพรีวิวไฟล์รูปภาพและ PDF) */}
+      {previewFile && (
+        <div className="fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-3 sm:p-6 backdrop-blur-sm animate-fadeIn">
+          <div className="bg-white w-full max-w-4xl h-[85vh] rounded-2xl shadow-2xl flex flex-col overflow-hidden border border-slate-200">
+            
+            {/* Modal Header */}
+            <div className="px-5 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50 shrink-0">
+              <div className="flex items-center gap-2.5 min-w-0">
+                {getFileTypeCategory(previewFile) === 'pdf' ? (
+                  <FileText size={20} className="text-red-500 shrink-0" />
+                ) : (
+                  <ImageIcon size={20} className="text-emerald-500 shrink-0" />
+                )}
+                <h3 className="font-semibold text-slate-900 text-sm truncate">{previewFile.name}</h3>
+              </div>
+              
+              <div className="flex items-center gap-2">
+                <a 
+                  href={previewFile.file_url} 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-200 hover:bg-slate-100 text-slate-700 text-xs font-medium rounded-lg transition shadow-sm"
+                  title="เปิดในแท็บใหม่"
+                >
+                  <ExternalLink size={14} /> เปิดแท็บใหม่
+                </a>
+                <button 
+                  onClick={() => setPreviewFile(null)} 
+                  className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-200/60 rounded-lg transition"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+            </div>
+
+            {/* Modal Body (แสดงผลรูปภาพหรือ PDF) */}
+            <div className="flex-1 bg-slate-100 flex items-center justify-center overflow-hidden relative p-2 sm:p-4">
+              {getFileTypeCategory(previewFile) === 'image' ? (
+                <div className="w-full h-full flex items-center justify-center overflow-auto">
+                  <img 
+                    src={previewFile.file_url} 
+                    alt={previewFile.name} 
+                    className="max-w-full max-h-full object-contain rounded-lg shadow-md bg-white" 
+                  />
+                </div>
+              ) : (
+                <iframe 
+                  src={`${previewFile.file_url}#toolbar=0`} 
+                  title={previewFile.name} 
+                  className="w-full h-full rounded-lg border border-slate-200 bg-white shadow-sm"
+                />
+              )}
+            </div>
+
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
