@@ -1,67 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
-import { AuthProvider, useAuth } from './AuthContext';
-import LoginForm from './LoginForm';
-import CookieConsent from './components/CookieConsent';
-import PrivacyPolicy from './PrivacyPolicy';
-import ProfileView from './ProfileView';
-import { 
-  FileText, 
-  Image as ImageIcon, 
-  Upload, 
-  Trash2, 
-  Edit3, 
-  Eye, 
-  Search, 
-  LayoutDashboard, 
-  Folder, 
-  LogOut, 
-  Menu, 
-  X,
-  Loader2,
-  User,
-  Shield,
-  Users
-} from 'lucide-react';
-
-const BASE_DOMAIN = 'https://dms-backend-gf47.onrender.com';
-const API_BASE_URL = `${BASE_DOMAIN}/api/documents`;
-
-const getFileTypeCategory = (doc) => {
-  const mime = (doc.file_type || doc.type || '').toLowerCase();
-  const name = (doc.name || '').toLowerCase();
-  const ext = name.split('.').pop() || '';
-
-  const imageExts = ['jpg', 'jpeg', 'png', 'webp', 'gif', 'heic', 'heif', 'svg', 'bmp'];
-  const wordExts = ['doc', 'docx'];
-  const pdfExts = ['pdf'];
-
-  if (mime.startsWith('image/') || imageExts.includes(ext)) return 'image';
-  if (mime.includes('pdf') || pdfExts.includes(ext)) return 'pdf';
-  if (mime.includes('word') || mime.includes('msword') || mime.includes('officedocument') || wordExts.includes(ext)) return 'word';
-  return 'other';
-};
-
-// ฟังก์ชันช่วยดึง Token จาก Supabase Session ใน LocalStorage
-const getSupabaseToken = () => {
-  try {
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i);
-      if (key && key.startsWith('sb-') && key.endsWith('-auth-token')) {
-        const item = localStorage.getItem(key);
-        if (item) {
-          const parsed = JSON.parse(item);
-          if (parsed?.access_token) return parsed.access_token;
-        }
-      }
-    }
-  } catch (e) {
-    console.error('Error getting token:', e);
-  }
-  return '';
-};
-
-import React, { useState, useEffect } from 'react';
 import {
   Folder, FileText, ImageIcon, Upload, Trash2, Edit3,
   Search, Shield, User, LogOut, Menu, X, ExternalLink,
@@ -275,11 +212,7 @@ export default function App() {
           {activeTab === 'profile' ? (
             <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
               <h3 className="font-semibold text-slate-900 mb-4">จัดการโปรไฟล์ผู้ใช้งาน</h3>
-<<<<<<< HEAD
-              <p className="text-sm text-slate-600">อีเมล: {user?.email}</p>
-=======
               <p className="text-sm text-slate-600">อีเมล: {user.email}</p>
->>>>>>> df94db8b3a38c046b5834a22bfddcdfd1516aff5
             </div>
           ) : activeTab === 'users' ? (
             <div className="space-y-4">
@@ -291,6 +224,7 @@ export default function App() {
                         <th className="px-4 md:px-6 py-3.5 font-medium">อีเมลผู้ใช้</th>
                         <th className="px-4 md:px-6 py-3.5 font-medium">สิทธิ์การใช้งาน</th>
                         <th className="px-4 md:px-6 py-3.5 font-medium">วันที่สร้าง</th>
+                        <th className="px-4 md:px-6 py-3.5 font-medium text-right">การจัดการ</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
@@ -375,6 +309,7 @@ export default function App() {
                         <th className="px-4 md:px-6 py-3.5 font-medium">ชื่อเอกสาร</th>
                         <th className="px-4 md:px-6 py-3.5 font-medium">ขนาด</th>
                         <th className="px-4 md:px-6 py-3.5 font-medium">วันที่อัปโหลด</th>
+                        <th className="px-4 md:px-6 py-3.5 font-medium text-right">การจัดการ</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
