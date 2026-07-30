@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom'; // 🟢 1. นำเข้า Link จาก react-router-dom
 
 export default function CookieConsent() {
   const [isVisible, setIsVisible] = useState(false);
@@ -22,10 +23,10 @@ export default function CookieConsent() {
       <div style={styles.content}>
         <p style={styles.text}>
           เว็บไซต์นี้มีการใช้งานคุกกี้ (Cookies) เพื่อเพิ่มประสบการณ์การใช้งานที่ดี และวิเคราะห์การเข้าชมเว็บไซต์ อ่านเพิ่มเติมได้ที่{' '}
-          {/* 🟢 ลิงก์วิ่งไปหน้า Privacy Policy */}
-          <a href="/privacy-policy" style={styles.link}>
+          {/* 🟢 2. เปลี่ยนจาก <a href="..."> เป็น <Link to="..."> */}
+          <Link to="/privacy-policy" style={styles.link}>
             นโยบายความเป็นส่วนตัว
-          </a>
+          </Link>
         </p>
         <button onClick={handleAccept} style={styles.button}>
           ยอมรับทั้งหมด
