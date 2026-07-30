@@ -4,7 +4,7 @@ import { AuthProvider, useAuth } from './AuthContext';
 import LoginForm from './LoginForm';
 import CookieConsent from './components/CookieConsent';
 import PrivacyPolicy from './PrivacyPolicy';
-import ProfileView from './ProfileView'; // 🟢 เพิ่มคอมโพเนนต์จัดการโปรไฟล์
+import ProfileView from './ProfileView';
 import { 
   FileText, 
   Image as ImageIcon, 
@@ -20,7 +20,8 @@ import {
   X,
   Loader2,
   User,
-  Shield
+  Shield,
+  Users
 } from 'lucide-react';
 
 const BASE_DOMAIN = 'https://dms-backend-gf47.onrender.com';
@@ -44,12 +45,14 @@ const getFileTypeCategory = (doc) => {
 function DashboardContent() {
   const { user, logout } = useAuth();
   const [documents, setDocuments] = useState([]);
+  const [usersList, setUsersList] = useState([]);
   const [loadingDocs, setLoadingDocs] = useState(true);
+  const [loadingUsers, setLoadingUsers] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
-  const [activeTab, setActiveTab] = useState('all'); // รองรับค่า 'all', 'pdf', 'word', 'image', 'profile'
+  const [activeTab, setActiveTab] = useState('all');
 
   const fetchDocuments = async () => {
     if (!user?.email) return;
@@ -58,7 +61,6 @@ function DashboardContent() {
       setErrorMsg('');
       const url = new URL(API_BASE_URL);
       
-      // ส่ง userEmail และ userRole ไปยัง Backend เพื่อให้ระบบเช็คสิทธิ์ (Admin ดูทั้งหมด / User ดูเฉพาะตัวเอง)
       url.searchParams.append('userEmail', user.email);
       if (user?.role) {
         url.searchParams.append('userRole', user.role);
@@ -78,9 +80,31 @@ function DashboardContent() {
     }
   };
 
+  const fetchUsers = async () => {
+    if (user?.role !== 'admin') return;
+    try {
+      setLoadingUsers(true);
+      const res = await fetch(`${BASE_DOMAIN}/api/users`);
+      const result = await res.json();
+      if (res.ok && result.success) {
+        setUsersList(result.data || []);
+      }
+    } catch (err) {
+      console.error('Error fetching users:', err);
+    } finally {
+      setLoadingUsers(false);
+    }
+  };
+
   useEffect(() => {
     if (user?.email) fetchDocuments();
   }, [user?.email, user?.role]);
+
+  useEffect(() => {
+    if (activeTab === 'users' && user?.role === 'admin') {
+      fetchUsers();
+    }
+  }, [activeTab, user?.role]);
 
   const handleFileUpload = async (e) => {
     const file = e.target.files[0];
@@ -137,7 +161,7 @@ function DashboardContent() {
     try {
       const url = new URL(`${API_BASE_URL}/${id}`);
       if (user?.email) url.searchParams.append('userEmail', user.email);
-      if (user?.role) url.searchParams.append('userRole', user.role); // 🟢 ส่ง userRole ไปด้วยเพื่อให้ Admin ลบได้ทุกไฟล์
+      if (user?.role) url.searchParams.append('userRole', user.role);
 
       const res = await fetch(url.toString(), { method: 'DELETE' });
       const result = await res.json();
@@ -161,7 +185,7 @@ function DashboardContent() {
         body: JSON.stringify({ 
           name: newName.trim(), 
           userEmail: user?.email,
-          userRole: user?.role // 🟢 ส่ง userRole ไปด้วยเพื่อให้ Admin แก้ไขชื่อไฟล์ของทุกคนได้
+          userRole: user?.role
         }),
       });
       const result = await res.json();
@@ -178,6 +202,46 @@ function DashboardContent() {
   const handleOpenFile = (fileUrl) => {
     if (fileUrl) window.open(fileUrl, '_blank', 'noopener,noreferrer');
     else alert('ไม่พบลิงก์ไฟล์เอกสาร');
+  };
+
+  const handleEditUser = async (targetEmail) => {
+    const newPassword = prompt(`ป้อนรหัสผ่านใหม่สำหรับผู้ใช้ (${targetEmail}):`);
+    if (!newPassword) return;
+    try {
+      const res = await fetch(`${BASE_DOMAIN}/api/users/update-password`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: targetEmail, newPassword })
+      });
+      const result = await res.json();
+      if (res.ok && result.success) {
+        alert('เปลี่ยนรหัสผ่านผู้ใช้สำเร็จ');
+      } else {
+        alert(result.message || 'ไม่สามารถเปลี่ยนรหัสผ่านได้');
+      }
+    } catch (err) {
+      alert('เกิดข้อผิดพลาดในการเชื่อมต่อ');
+    }
+  };
+
+  const handleDeleteUser = async (targetUserId, targetEmail) => {
+    if (!confirm(`คุณต้องการลบบัญชีผู้ใช้ ${targetEmail} ใช่หรือไม่?`)) return;
+    try {
+      const res = await fetch(`${BASE_DOMAIN}/api/users/${targetUserId}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ adminEmail: user.email })
+      });
+      const result = await res.json();
+      if (res.ok && result.success) {
+        setUsersList(prev => prev.filter(u => u.id !== targetUserId));
+        alert('ลบบัญชีผู้ใช้สำเร็จ');
+      } else {
+        alert(result.message || 'ไม่สามารถลบบัญชีผู้ใช้ได้');
+      }
+    } catch (err) {
+      alert('เกิดข้อผิดพลาดในการลบบัญชีผู้ใช้');
+    }
   };
 
   const pdfCount = documents.filter(d => getFileTypeCategory(d) === 'pdf').length;
@@ -199,7 +263,7 @@ function DashboardContent() {
         <div onClick={() => setSidebarOpen(false)} className="fixed inset-0 bg-slate-900/40 z-40 md:hidden backdrop-blur-sm transition-opacity" />
       )}
 
-      {/* Sidebar ค้างติดหน้าจอและจัดองค์ประกอบด้านล่างด้วย flex flex-col justify-between */}
+      {/* Sidebar */}
       <aside className={`fixed inset-y-0 left-0 z-50 w-64 bg-white border-r border-slate-200 transform transition-transform duration-300 ease-in-out ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} md:sticky md:top-0 md:translate-x-0 h-screen flex flex-col justify-between shrink-0`}>
         <div>
           <div className="h-16 flex items-center justify-between px-6 border-b border-slate-100">
@@ -232,10 +296,18 @@ function DashboardContent() {
               <div className="flex items-center gap-3"><ImageIcon size={18} className="text-emerald-500" /><span>ไฟล์รูปภาพ</span></div>
               <span className="text-xs bg-emerald-50 text-emerald-600 px-2 py-0.5 rounded-full border border-emerald-100 font-normal">{imageCount}</span>
             </button>
+
+            {user?.role === 'admin' && (
+              <>
+                <div className="pt-3 pb-1 px-3 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">ผู้ดูแลระบบ</div>
+                <button onClick={() => { setActiveTab('users'); setSidebarOpen(false); }} className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-sm font-medium transition ${activeTab === 'users' ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100'}`}>
+                  <div className="flex items-center gap-3"><Users size={18} /><span>จัดการบัญชีผู้ใช้</span></div>
+                </button>
+              </>
+            )}
           </nav>
         </div>
 
-        {/* 🟢 ส่วนล่างของ Sidebar: แสดงสิทธิ์ผู้ใช้, ปุ่มจัดการโปรไฟล์ และปุ่มออกจากระบบ */}
         <div className="p-4 border-t border-slate-100 bg-white space-y-2">
           <div className="flex items-center justify-between text-xs px-2 py-1.5 bg-slate-100 rounded-lg">
             <span className="text-slate-500 flex items-center gap-1"><Shield size={13} /> สิทธิ์:</span>
@@ -266,6 +338,7 @@ function DashboardContent() {
               {activeTab === 'pdf' && 'คลังเอกสาร PDF'}
               {activeTab === 'word' && 'คลังเอกสาร Word'}
               {activeTab === 'image' && 'คลังรูปภาพ'}
+              {activeTab === 'users' && 'จัดการบัญชีผู้ใช้งานในระบบ'}
               {activeTab === 'profile' && 'จัดการโปรไฟล์ผู้ใช้งาน'}
             </h1>
           </div>
@@ -279,10 +352,55 @@ function DashboardContent() {
 
         <main className="p-4 md:p-8 space-y-6 max-w-6xl w-full mx-auto">
           {activeTab === 'profile' ? (
-            /* 🟢 แสดงหน้าจัดการโปรไฟล์เมื่อเลือกแท็บ profile */
             <ProfileView />
+          ) : activeTab === 'users' ? (
+            <div className="space-y-4">
+              <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-sm text-slate-600 min-w-[550px]">
+                    <thead className="bg-slate-50 text-slate-500 text-xs uppercase border-b border-slate-200">
+                      <tr>
+                        <th className="px-4 md:px-6 py-3.5 font-medium">อีเมลผู้ใช้</th>
+                        <th className="px-4 md:px-6 py-3.5 font-medium">สิทธิ์การใช้งาน</th>
+                        <th className="px-4 md:px-6 py-3.5 font-medium">วันที่สร้าง</th>
+                        <th className="px-4 md:px-6 py-3.5 font-medium text-right">การจัดการ</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {loadingUsers ? (
+                        <tr><td colSpan="4" className="text-center py-8 text-slate-400 text-sm"><div className="flex items-center justify-center gap-2"><Loader2 size={18} className="animate-spin" /> กำลังโหลดรายชื่อผู้ใช้...</div></td></tr>
+                      ) : usersList.length > 0 ? (
+                        usersList.map((uItem) => (
+                          <tr key={uItem.id} className="hover:bg-slate-50/80 transition">
+                            <td className="px-4 md:px-6 py-4 font-medium text-slate-900 flex items-center gap-2">
+                              <User size={16} className="text-slate-400" />
+                              <span>{uItem.email}</span>
+                            </td>
+                            <td className="px-4 md:px-6 py-4">
+                              <span className={`px-2 py-0.5 rounded text-xs uppercase font-semibold ${uItem.role === 'admin' ? 'bg-purple-100 text-purple-700' : 'bg-slate-100 text-slate-700'}`}>
+                                {uItem.role || 'user'}
+                              </span>
+                            </td>
+                            <td className="px-4 md:px-6 py-4 text-slate-500 text-xs">
+                              {uItem.created_at ? new Date(uItem.created_at).toLocaleDateString('th-TH') : '-'}
+                            </td>
+                            <td className="px-4 md:px-6 py-4 text-right">
+                              <div className="flex items-center justify-end gap-1 sm:gap-2">
+                                <button onClick={() => handleEditUser(uItem.email)} className="p-1.5 hover:bg-slate-100 text-slate-600 rounded-md transition" title="แก้ไขรหัสผ่าน"><Edit3 size={16} /></button>
+                                <button onClick={() => handleDeleteUser(uItem.id, uItem.email)} className="p-1.5 hover:bg-red-50 text-red-600 rounded-md transition" title="ลบบัญชีผู้ใช้"><Trash2 size={16} /></button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))
+                      ) : (
+                        <tr><td colSpan="4" className="text-center py-8 text-slate-400 text-sm">ไม่พบข้อมูลผู้ใช้งานในระบบ</td></tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
           ) : (
-            /* 🟢 แสดงหน้าคลังเอกสารปกติ */
             <>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 md:gap-4">
                 <div onClick={() => setActiveTab('all')} className={`p-4 md:p-5 rounded-xl border transition cursor-pointer shadow-sm ${activeTab === 'all' ? 'bg-white border-slate-900 ring-1 ring-slate-900' : 'bg-white border-slate-200 hover:border-slate-300'}`}>
