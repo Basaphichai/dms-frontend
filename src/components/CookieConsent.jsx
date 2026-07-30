@@ -1,0 +1,78 @@
+import React, { useState, useEffect } from 'react';
+
+export default function CookieConsent() {
+  const [isVisible, setIsVisible] = useState(false);
+
+  useEffect(() => {
+    // เช็กว่าผู้ใช้เคยกด "ยอมรับ" ไปแล้วหรือยัง
+    const consent = localStorage.getItem('cookie_consent');
+    if (!consent) {
+      setIsVisible(true); // ถ้ายังไม่เคย ให้แสดงแถียบคุกกี้ขึ้นมา
+    }
+  }, []);
+
+  const handleAccept = () => {
+    localStorage.setItem('cookie_consent', 'true'); // บันทึกสถานะว่ายอมรับแล้ว
+    setIsVisible(false); // ซ่อนแถบ
+  };
+
+  if (!isVisible) return null;
+
+  return (
+    <div style={styles.banner}>
+      <div style={styles.content}>
+        <p style={styles.text}>
+          เว็บไซต์นี้มีการใช้งานคุกกี้ (Cookies) เพื่อเพิ่มประสบการณ์การใช้งานที่ดี and วิเคราะห์การเข้าชมเว็บไซต์ 
+          อ่านเพิ่มเติมได้ที่ <a href="/privacy-policy" style={styles.link}>นโยบายความเป็นส่วนตัว</a>
+        </p>
+        <button onClick={handleAccept} style={styles.button}>
+          ยอมรับทั้งหมด
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// สไตล์การตกแต่งแถพคุกกี้ (สามารถปรับเปลี่ยน CSS ได้ตามต้องการ)
+const styles = {
+  banner: {
+    position: 'fixed',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: '#1f2937',
+    color: '#ffffff',
+    padding: '16px 24px',
+    boxShadow: '0 -4px 6px -1px rgba(0, 0, 0, 0.1)',
+    zIndex: 9999,
+  },
+  content: {
+    maxWidth: '1200px',
+    margin: '0 auto',
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: '12px',
+  },
+  text: {
+    margin: 0,
+    fontSize: '14px',
+    flex: 1,
+    lineHeight: '1.5',
+  },
+  link: {
+    color: '#60a5fa',
+    textDecoration: 'underline',
+  },
+  button: {
+    backgroundColor: '#3b82f6',
+    color: '#ffffff',
+    border: 'none',
+    padding: '8px 16px',
+    borderRadius: '6px',
+    cursor: 'pointer',
+    fontWeight: 'bold',
+    fontSize: '14px',
+  },
+};

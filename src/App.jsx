@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { AuthProvider, useAuth } from './AuthContext';
 import LoginForm from './LoginForm';
+import CookieConsent from './components/CookieConsent'; // 🟢 นำเข้าคอมโพเนนต์คุกกี้
 import { 
   FileText, 
   Image as ImageIcon, 
@@ -560,6 +561,7 @@ export default function App() {
   return (
     <AuthProvider>
       <MainRouter />
+      <CookieConsent />
     </AuthProvider>
   );
 }
