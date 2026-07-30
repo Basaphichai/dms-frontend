@@ -4,6 +4,7 @@ import { AuthProvider, useAuth } from './AuthContext';
 import LoginForm from './LoginForm';
 import CookieConsent from './components/CookieConsent';
 import PrivacyPolicy from './PrivacyPolicy';
+import ProfileView from './ProfileView'; // 🟢 เพิ่มคอมโพเนนต์จัดการโปรไฟล์
 import { 
   FileText, 
   Image as ImageIcon, 
@@ -17,7 +18,9 @@ import {
   LogOut, 
   Menu, 
   X,
-  Loader2 
+  Loader2,
+  User,
+  Shield
 } from 'lucide-react';
 
 const BASE_DOMAIN = 'https://dms-backend-gf47.onrender.com';
@@ -46,7 +49,7 @@ function DashboardContent() {
   const [searchTerm, setSearchTerm] = useState('');
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
-  const [activeTab, setActiveTab] = useState('all');
+  const [activeTab, setActiveTab] = useState('all'); // รองรับค่า 'all', 'pdf', 'word', 'image', 'profile'
 
   const fetchDocuments = async () => {
     if (!user?.email) return;
@@ -54,7 +57,13 @@ function DashboardContent() {
       setLoadingDocs(true);
       setErrorMsg('');
       const url = new URL(API_BASE_URL);
+      
+      // ส่ง userEmail และ userRole ไปยัง Backend เพื่อให้ระบบเช็คสิทธิ์ (Admin ดูทั้งหมด / User ดูเฉพาะตัวเอง)
       url.searchParams.append('userEmail', user.email);
+      if (user?.role) {
+        url.searchParams.append('userRole', user.role);
+      }
+
       const res = await fetch(url.toString());
       const result = await res.json();
       if (res.ok && result.success) {
@@ -71,7 +80,7 @@ function DashboardContent() {
 
   useEffect(() => {
     if (user?.email) fetchDocuments();
-  }, [user?.email]);
+  }, [user?.email, user?.role]);
 
   const handleFileUpload = async (e) => {
     const file = e.target.files[0];
@@ -184,7 +193,7 @@ function DashboardContent() {
         <div onClick={() => setSidebarOpen(false)} className="fixed inset-0 bg-slate-900/40 z-40 md:hidden backdrop-blur-sm transition-opacity" />
       )}
 
-      {/* 🟢 ปรับปรุงแถบ Sidebar ให้เป็นแบบ Sticky ค้างติดหน้าจอและจัดปุ่มออกจากระบบไว้ล่างสุดด้วย flex flex-col justify-between */}
+      {/* Sidebar ค้างติดหน้าจอและจัดองค์ประกอบด้านล่างด้วย flex flex-col justify-between */}
       <aside className={`fixed inset-y-0 left-0 z-50 w-64 bg-white border-r border-slate-200 transform transition-transform duration-300 ease-in-out ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} md:sticky md:top-0 md:translate-x-0 h-screen flex flex-col justify-between shrink-0`}>
         <div>
           <div className="h-16 flex items-center justify-between px-6 border-b border-slate-100">
@@ -220,9 +229,25 @@ function DashboardContent() {
           </nav>
         </div>
 
-        {/* 🟢 ปุ่มออกจากระบบจะถูกยึดติดอยู่มุมล่างซ้ายเสมอ */}
-        <div className="p-4 border-t border-slate-100 bg-white">
-          <button onClick={logout} className="flex items-center gap-3 w-full px-3 py-2.5 text-slate-500 hover:text-red-600 hover:bg-red-50 rounded-lg text-sm font-medium transition"><LogOut size={18} /> ออกจากระบบ</button>
+        {/* 🟢 ส่วนล่างของ Sidebar: แสดงสิทธิ์ผู้ใช้, ปุ่มจัดการโปรไฟล์ และปุ่มออกจากระบบ */}
+        <div className="p-4 border-t border-slate-100 bg-white space-y-2">
+          <div className="flex items-center justify-between text-xs px-2 py-1.5 bg-slate-100 rounded-lg">
+            <span className="text-slate-500 flex items-center gap-1"><Shield size={13} /> สิทธิ์:</span>
+            <span className={`font-semibold px-2 py-0.5 rounded text-[10px] uppercase ${user?.role === 'admin' ? 'bg-purple-100 text-purple-700' : 'bg-slate-200 text-slate-700'}`}>
+              {user?.role || 'User'}
+            </span>
+          </div>
+
+          <button 
+            onClick={() => { setActiveTab('profile'); setSidebarOpen(false); }} 
+            className={`flex items-center gap-3 w-full px-3 py-2.5 rounded-lg text-sm font-medium transition ${activeTab === 'profile' ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100'}`}
+          >
+            <User size={18} /> จัดการโปรไฟล์
+          </button>
+
+          <button onClick={logout} className="flex items-center gap-3 w-full px-3 py-2.5 text-slate-500 hover:text-red-600 hover:bg-red-50 rounded-lg text-sm font-medium transition">
+            <LogOut size={18} /> ออกจากระบบ
+          </button>
         </div>
       </aside>
 
@@ -235,6 +260,7 @@ function DashboardContent() {
               {activeTab === 'pdf' && 'คลังเอกสาร PDF'}
               {activeTab === 'word' && 'คลังเอกสาร Word'}
               {activeTab === 'image' && 'คลังรูปภาพ'}
+              {activeTab === 'profile' && 'จัดการโปรไฟล์ผู้ใช้งาน'}
             </h1>
           </div>
           <div className="flex items-center gap-3">
@@ -246,94 +272,102 @@ function DashboardContent() {
         </header>
 
         <main className="p-4 md:p-8 space-y-6 max-w-6xl w-full mx-auto">
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 md:gap-4">
-            <div onClick={() => setActiveTab('all')} className={`p-4 md:p-5 rounded-xl border transition cursor-pointer shadow-sm ${activeTab === 'all' ? 'bg-white border-slate-900 ring-1 ring-slate-900' : 'bg-white border-slate-200 hover:border-slate-300'}`}>
-              <p className="text-xs text-slate-500 font-medium">เอกสารทั้งหมด</p>
-              <p className="text-xl md:text-2xl font-bold text-slate-900 mt-1">{documents.length} รายการ</p>
-            </div>
-            <div onClick={() => setActiveTab('pdf')} className={`p-4 md:p-5 rounded-xl border transition cursor-pointer shadow-sm ${activeTab === 'pdf' ? 'bg-white border-red-500 ring-1 ring-red-500' : 'bg-white border-slate-200 hover:border-slate-300'}`}>
-              <p className="text-xs text-slate-500 font-medium">ไฟล์ PDF</p>
-              <p className="text-xl md:text-2xl font-bold text-slate-900 mt-1">{pdfCount} รายการ</p>
-            </div>
-            <div onClick={() => setActiveTab('word')} className={`p-4 md:p-5 rounded-xl border transition cursor-pointer shadow-sm ${activeTab === 'word' ? 'bg-white border-blue-500 ring-1 ring-blue-500' : 'bg-white border-slate-200 hover:border-slate-300'}`}>
-              <p className="text-xs text-slate-500 font-medium">ไฟล์ Word</p>
-              <p className="text-xl md:text-2xl font-bold text-slate-900 mt-1">{wordCount} รายการ</p>
-            </div>
-            <div onClick={() => setActiveTab('image')} className={`p-4 md:p-5 rounded-xl border transition cursor-pointer shadow-sm ${activeTab === 'image' ? 'bg-white border-emerald-500 ring-1 ring-emerald-500' : 'bg-white border-slate-200 hover:border-slate-300'}`}>
-              <p className="text-xs text-slate-500 font-medium">ไฟล์รูปภาพ</p>
-              <p className="text-xl md:text-2xl font-bold text-slate-900 mt-1">{imageCount} รายการ</p>
-            </div>
-          </div>
+          {activeTab === 'profile' ? (
+            /* 🟢 แสดงหน้าจัดการโปรไฟล์เมื่อเลือกแท็บ profile */
+            <ProfileView />
+          ) : (
+            /* 🟢 แสดงหน้าคลังเอกสารปกติ */
+            <>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 md:gap-4">
+                <div onClick={() => setActiveTab('all')} className={`p-4 md:p-5 rounded-xl border transition cursor-pointer shadow-sm ${activeTab === 'all' ? 'bg-white border-slate-900 ring-1 ring-slate-900' : 'bg-white border-slate-200 hover:border-slate-300'}`}>
+                  <p className="text-xs text-slate-500 font-medium">เอกสารทั้งหมด</p>
+                  <p className="text-xl md:text-2xl font-bold text-slate-900 mt-1">{documents.length} รายการ</p>
+                </div>
+                <div onClick={() => setActiveTab('pdf')} className={`p-4 md:p-5 rounded-xl border transition cursor-pointer shadow-sm ${activeTab === 'pdf' ? 'bg-white border-red-500 ring-1 ring-red-500' : 'bg-white border-slate-200 hover:border-slate-300'}`}>
+                  <p className="text-xs text-slate-500 font-medium">ไฟล์ PDF</p>
+                  <p className="text-xl md:text-2xl font-bold text-slate-900 mt-1">{pdfCount} รายการ</p>
+                </div>
+                <div onClick={() => setActiveTab('word')} className={`p-4 md:p-5 rounded-xl border transition cursor-pointer shadow-sm ${activeTab === 'word' ? 'bg-white border-blue-500 ring-1 ring-blue-500' : 'bg-white border-slate-200 hover:border-slate-300'}`}>
+                  <p className="text-xs text-slate-500 font-medium">ไฟล์ Word</p>
+                  <p className="text-xl md:text-2xl font-bold text-slate-900 mt-1">{wordCount} รายการ</p>
+                </div>
+                <div onClick={() => setActiveTab('image')} className={`p-4 md:p-5 rounded-xl border transition cursor-pointer shadow-sm ${activeTab === 'image' ? 'bg-white border-emerald-500 ring-1 ring-emerald-500' : 'bg-white border-slate-200 hover:border-slate-300'}`}>
+                  <p className="text-xs text-slate-500 font-medium">ไฟล์รูปภาพ</p>
+                  <p className="text-xl md:text-2xl font-bold text-slate-900 mt-1">{imageCount} รายการ</p>
+                </div>
+              </div>
 
-          <div className="flex flex-col sm:flex-row gap-3 justify-between items-stretch sm:items-center">
-            <div className="relative flex-1 max-w-md">
-              <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-              <input type="text" placeholder="ค้นหาชื่อเอกสาร..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full pl-10 pr-4 py-2 text-sm bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-400" />
-            </div>
-            <label className={`flex items-center justify-center gap-2 px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-sm font-medium cursor-pointer transition shadow-sm shrink-0 ${isUploading ? 'opacity-50 cursor-not-allowed' : ''}`}>
-              {isUploading ? <Loader2 size={16} className="animate-spin" /> : <Upload size={16} />} 
-              {isUploading ? 'กำลังอัปโหลด...' : 'อัปโหลดเอกสาร'}
-              <input type="file" disabled={isUploading} accept="image/*,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,.pdf,.doc,.docx" onChange={handleFileUpload} className="hidden" />
-            </label>
-          </div>
+              <div className="flex flex-col sm:flex-row gap-3 justify-between items-stretch sm:items-center">
+                <div className="relative flex-1 max-w-md">
+                  <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <input type="text" placeholder="ค้นหาชื่อเอกสาร..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full pl-10 pr-4 py-2 text-sm bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-400" />
+                </div>
+                <label className={`flex items-center justify-center gap-2 px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-sm font-medium cursor-pointer transition shadow-sm shrink-0 ${isUploading ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                  {isUploading ? <Loader2 size={16} className="animate-spin" /> : <Upload size={16} />} 
+                  {isUploading ? 'กำลังอัปโหลด...' : 'อัปโหลดเอกสาร'}
+                  <input type="file" disabled={isUploading} accept="image/*,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,.pdf,.doc,.docx" onChange={handleFileUpload} className="hidden" />
+                </label>
+              </div>
 
-          {errorMsg && (
-            <div className="p-3 text-xs bg-red-50 text-red-600 rounded-lg border border-red-100 flex justify-between items-center">
-              <span>{errorMsg}</span>
-              <button onClick={() => setErrorMsg('')} className="text-red-400 hover:text-red-600 text-xs ml-2">✕</button>
-            </div>
+              {errorMsg && (
+                <div className="p-3 text-xs bg-red-50 text-red-600 rounded-lg border border-red-100 flex justify-between items-center">
+                  <span>{errorMsg}</span>
+                  <button onClick={() => setErrorMsg('')} className="text-red-400 hover:text-red-600 text-xs ml-2">✕</button>
+                </div>
+              )}
+
+              <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-sm text-slate-600 min-w-[550px]">
+                    <thead className="bg-slate-50 text-slate-500 text-xs uppercase border-b border-slate-200">
+                      <tr>
+                        <th className="px-4 md:px-6 py-3.5 font-medium">ชื่อเอกสาร</th>
+                        <th className="px-4 md:px-6 py-3.5 font-medium">ขนาด</th>
+                        <th className="px-4 md:px-6 py-3.5 font-medium">วันที่อัปโหลด</th>
+                        <th className="px-4 md:px-6 py-3.5 font-medium text-right">การจัดการ</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {loadingDocs ? (
+                        <tr><td colSpan="4" className="text-center py-8 text-slate-400 text-sm"><div className="flex items-center justify-center gap-2"><Loader2 size={18} className="animate-spin" /> กำลังโหลดเอกสาร...</div></td></tr>
+                      ) : filteredDocs.length > 0 ? (
+                        filteredDocs.map((doc) => {
+                          const category = getFileTypeCategory(doc);
+                          const displaySize = doc.file_size || doc.size || '-';
+                          const displayDate = doc.created_at ? new Date(doc.created_at).toLocaleDateString('th-TH') : '-';
+                          return (
+                            <tr key={doc.id} className="hover:bg-slate-50/80 transition">
+                              <td className="px-4 md:px-6 py-4 font-medium text-slate-900 flex items-center gap-3">
+                                {category === 'image' && doc.file_url ? (
+                                  <img src={doc.file_url} alt={doc.name} className="w-10 h-10 object-cover rounded-md border border-slate-200 shrink-0 shadow-sm hover:scale-105 transition cursor-pointer" onClick={() => handleOpenFile(doc.file_url)} />
+                                ) : category === 'pdf' ? (
+                                  <FileText size={18} className="shrink-0 text-red-500" />
+                                ) : (
+                                  <FileText size={18} className="shrink-0 text-blue-500" />
+                                )}
+                                <span className="truncate max-w-[180px] sm:max-w-xs">{doc.name}</span>
+                              </td>
+                              <td className="px-4 md:px-6 py-4 text-slate-500 text-xs">{displaySize}</td>
+                              <td className="px-4 md:px-6 py-4 text-slate-500 text-xs">{displayDate}</td>
+                              <td className="px-4 md:px-6 py-4 text-right">
+                                <div className="flex items-center justify-end gap-1 sm:gap-2">
+                                  <button onClick={() => handleOpenFile(doc.file_url)} className="p-1.5 hover:bg-slate-100 text-slate-600 rounded-md transition" title="เปิดไฟล์"><Eye size={16} /></button>
+                                  <button onClick={() => handleEdit(doc.id, doc.name)} className="p-1.5 hover:bg-slate-100 text-slate-600 rounded-md transition" title="แก้ไขชื่อ"><Edit3 size={16} /></button>
+                                  <button onClick={() => handleDelete(doc.id)} className="p-1.5 hover:bg-red-50 text-red-600 rounded-md transition" title="ลบเอกสาร"><Trash2 size={16} /></button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })
+                      ) : (
+                        <tr><td colSpan="4" className="text-center py-8 text-slate-400 text-sm">ไม่พบเอกสารในหมวดหมู่นี้</td></tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </>
           )}
-
-          <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-sm text-slate-600 min-w-[550px]">
-                <thead className="bg-slate-50 text-slate-500 text-xs uppercase border-b border-slate-200">
-                  <tr>
-                    <th className="px-4 md:px-6 py-3.5 font-medium">ชื่อเอกสาร</th>
-                    <th className="px-4 md:px-6 py-3.5 font-medium">ขนาด</th>
-                    <th className="px-4 md:px-6 py-3.5 font-medium">วันที่อัปโหลด</th>
-                    <th className="px-4 md:px-6 py-3.5 font-medium text-right">การจัดการ</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {loadingDocs ? (
-                    <tr><td colSpan="4" className="text-center py-8 text-slate-400 text-sm"><div className="flex items-center justify-center gap-2"><Loader2 size={18} className="animate-spin" /> กำลังโหลดเอกสาร...</div></td></tr>
-                  ) : filteredDocs.length > 0 ? (
-                    filteredDocs.map((doc) => {
-                      const category = getFileTypeCategory(doc);
-                      const displaySize = doc.file_size || doc.size || '-';
-                      const displayDate = doc.created_at ? new Date(doc.created_at).toLocaleDateString('th-TH') : '-';
-                      return (
-                        <tr key={doc.id} className="hover:bg-slate-50/80 transition">
-                          <td className="px-4 md:px-6 py-4 font-medium text-slate-900 flex items-center gap-3">
-                            {category === 'image' && doc.file_url ? (
-                              <img src={doc.file_url} alt={doc.name} className="w-10 h-10 object-cover rounded-md border border-slate-200 shrink-0 shadow-sm hover:scale-105 transition cursor-pointer" onClick={() => handleOpenFile(doc.file_url)} />
-                            ) : category === 'pdf' ? (
-                              <FileText size={18} className="shrink-0 text-red-500" />
-                            ) : (
-                              <FileText size={18} className="shrink-0 text-blue-500" />
-                            )}
-                            <span className="truncate max-w-[180px] sm:max-w-xs">{doc.name}</span>
-                          </td>
-                          <td className="px-4 md:px-6 py-4 text-slate-500 text-xs">{displaySize}</td>
-                          <td className="px-4 md:px-6 py-4 text-slate-500 text-xs">{displayDate}</td>
-                          <td className="px-4 md:px-6 py-4 text-right">
-                            <div className="flex items-center justify-end gap-1 sm:gap-2">
-                              <button onClick={() => handleOpenFile(doc.file_url)} className="p-1.5 hover:bg-slate-100 text-slate-600 rounded-md transition" title="เปิดไฟล์"><Eye size={16} /></button>
-                              <button onClick={() => handleEdit(doc.id, doc.name)} className="p-1.5 hover:bg-slate-100 text-slate-600 rounded-md transition" title="แก้ไขชื่อ"><Edit3 size={16} /></button>
-                              <button onClick={() => handleDelete(doc.id)} className="p-1.5 hover:bg-red-50 text-red-600 rounded-md transition" title="ลบเอกสาร"><Trash2 size={16} /></button>
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })
-                  ) : (
-                    <tr><td colSpan="4" className="text-center py-8 text-slate-400 text-sm">ไม่พบเอกสารในหมวดหมู่นี้</td></tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
         </main>
       </div>
     </div>
