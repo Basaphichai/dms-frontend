@@ -208,9 +208,13 @@ function DashboardContent() {
     const newPassword = prompt(`ป้อนรหัสผ่านใหม่สำหรับผู้ใช้ (${targetEmail}):`);
     if (!newPassword) return;
     try {
+      const sessionToken = localStorage.getItem('supabase.auth.token');
       const res = await fetch(`${BASE_DOMAIN}/api/users/update-password`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${user?.token || sessionToken || ''}`
+        },
         body: JSON.stringify({ email: targetEmail, newPassword })
       });
       const result = await res.json();
@@ -227,9 +231,13 @@ function DashboardContent() {
   const handleDeleteUser = async (targetUserId, targetEmail) => {
     if (!confirm(`คุณต้องการลบบัญชีผู้ใช้ ${targetEmail} ใช่หรือไม่?`)) return;
     try {
+      const sessionToken = localStorage.getItem('supabase.auth.token');
       const res = await fetch(`${BASE_DOMAIN}/api/users/${targetUserId}`, {
         method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${user?.token || sessionToken || ''}`
+        },
         body: JSON.stringify({ adminEmail: user.email })
       });
       const result = await res.json();
