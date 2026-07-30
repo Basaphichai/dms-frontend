@@ -137,6 +137,8 @@ function DashboardContent() {
     try {
       const url = new URL(`${API_BASE_URL}/${id}`);
       if (user?.email) url.searchParams.append('userEmail', user.email);
+      if (user?.role) url.searchParams.append('userRole', user.role); // 🟢 ส่ง userRole ไปด้วยเพื่อให้ Admin ลบได้ทุกไฟล์
+
       const res = await fetch(url.toString(), { method: 'DELETE' });
       const result = await res.json();
       if (res.ok && result.success) {
@@ -156,7 +158,11 @@ function DashboardContent() {
       const res = await fetch(`${API_BASE_URL}/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: newName.trim(), userEmail: user?.email }),
+        body: JSON.stringify({ 
+          name: newName.trim(), 
+          userEmail: user?.email,
+          userRole: user?.role // 🟢 ส่ง userRole ไปด้วยเพื่อให้ Admin แก้ไขชื่อไฟล์ของทุกคนได้
+        }),
       });
       const result = await res.json();
       if (res.ok && result.success) {
