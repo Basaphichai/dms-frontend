@@ -379,7 +379,10 @@ function DashboardContent() {
 
         <main className="p-4 md:p-8 space-y-6 max-w-6xl w-full mx-auto">
           {activeTab === 'profile' ? (
-            <ProfileView />
+            <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+              <h3 className="font-semibold text-slate-900 mb-4">จัดการโปรไฟล์ผู้ใช้งาน</h3>
+              <p className="text-sm text-slate-600">อีเมล: {user?.email}</p>
+            </div>
           ) : activeTab === 'users' ? (
             <div className="space-y-4">
               <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
@@ -390,7 +393,6 @@ function DashboardContent() {
                         <th className="px-4 md:px-6 py-3.5 font-medium">อีเมลผู้ใช้</th>
                         <th className="px-4 md:px-6 py-3.5 font-medium">สิทธิ์การใช้งาน</th>
                         <th className="px-4 md:px-6 py-3.5 font-medium">วันที่สร้าง</th>
-                        <th className="px-4 md:px-6 py-3.5 font-medium text-right">การจัดการ</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
@@ -475,7 +477,6 @@ function DashboardContent() {
                         <th className="px-4 md:px-6 py-3.5 font-medium">ชื่อเอกสาร</th>
                         <th className="px-4 md:px-6 py-3.5 font-medium">ขนาด</th>
                         <th className="px-4 md:px-6 py-3.5 font-medium">วันที่อัปโหลด</th>
-                        <th className="px-4 md:px-6 py-3.5 font-medium text-right">การจัดการ</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
