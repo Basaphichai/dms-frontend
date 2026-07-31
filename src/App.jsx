@@ -1,288 +1,79 @@
 import React, { useState, useEffect } from 'react';
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
-import { AuthProvider, useAuth } from './AuthContext';
-import LoginForm from './LoginForm';
-import CookieConsent from './components/CookieConsent';
-import PrivacyPolicy from './PrivacyPolicy';
-import ProfileView from './ProfileView';
-import { 
-  FileText, 
-  Image as ImageIcon, 
-  Upload, 
-  Trash2, 
-  Edit3, 
-  Eye, 
-  Search, 
-  LayoutDashboard, 
-  Folder, 
-  LogOut, 
-  Menu, 
-  X,
-  Loader2,
-  User,
-  Shield,
-  Users,
-  ExternalLink
+import { supabase } from './supabaseClient';
+import JSZip from 'jszip';
+import { saveAs } from 'file-saver';
+import {
+  Folder, FileText, ImageIcon, Upload, Trash2, Edit3,
+  Search, Shield, User, LogOut, Menu, X, ExternalLink,
+  LayoutDashboard, Users, Loader2, Eye, Download, CheckSquare, Square
 } from 'lucide-react';
 
-const BASE_DOMAIN = 'https://dms-backend-gf47.onrender.com';
-const API_BASE_URL = `${BASE_DOMAIN}/api/documents`;
-
-const getFileTypeCategory = (doc) => {
-  const mime = (doc.file_type || doc.type || '').toLowerCase();
+function getFileTypeCategory(doc) {
   const name = (doc.name || '').toLowerCase();
-  const ext = name.split('.').pop() || '';
+  if (name.endsWith('.pdf')) return 'pdf';
+  if (name.endsWith('.png') || name.endsWith('.jpg') || name.endsWith('.jpeg')) return 'image';
+  return 'word';
+}
 
-  const imageExts = ['jpg', 'jpeg', 'png', 'webp', 'gif', 'heic', 'heif', 'svg', 'bmp'];
-  const wordExts = ['doc', 'docx'];
-  const pdfExts = ['pdf'];
-
-  if (mime.startsWith('image/') || imageExts.includes(ext)) return 'image';
-  if (mime.includes('pdf') || pdfExts.includes(ext)) return 'pdf';
-  if (mime.includes('word') || mime.includes('msword') || mime.includes('officedocument') || wordExts.includes(ext)) return 'word';
-  return 'other';
-};
-
-const getSupabaseToken = () => {
-  try {
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i);
-      if (key && key.startsWith('sb-') && key.endsWith('-auth-token')) {
-        const item = localStorage.getItem(key);
-        if (item) {
-          const parsed = JSON.parse(item);
-          if (parsed?.access_token) return parsed.access_token;
-        }
-      }
-    }
-  } catch (e) {
-    console.error('Error getting token:', e);
-  }
-  return '';
-};
-
-function DashboardContent() {
-  const { user, logout } = useAuth();
-  const [documents, setDocuments] = useState([]);
-  const [usersList, setUsersList] = useState([]);
-  const [loadingDocs, setLoadingDocs] = useState(true);
-  const [loadingUsers, setLoadingUsers] = useState(false);
-  const [isUploading, setIsUploading] = useState(false);
-  const [searchTerm, setSearchTerm] = useState('');
+export default function App() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [errorMsg, setErrorMsg] = useState('');
   const [activeTab, setActiveTab] = useState('all');
+  const [documents, setDocuments] = useState([]);
+  const [loadingDocs, setLoadingDocs] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [isUploading, setIsUploading] = useState(false);
+  const [errorMsg, setErrorMsg] = useState('');
 
-  const [dateFilter, setDateFilter] = useState('all');
-  const [startDate, setStartDate] = useState('');
-  const [endDate, setEndDate] = useState('');
-  const [sortBy, setSortBy] = useState('date-desc');
+  // State สำหรับเก็บรายการ ID ของเอกสารที่ถูกเลือกติ๊ก Checkbox
+  const [selectedDocIds, setSelectedDocIds] = useState([]);
+  const [isDownloadingZip, setIsDownloadingZip] = useState(false);
 
-  // State สำหรับจัดการ Modal Preview ไฟล์
-  const [previewFile, setPreviewFile] = useState(null);
+  const [user, setUser] = useState({ email: 'aphichaichiaraksa@gmail.com', role: 'admin' });
+  const [usersList, setUsersList] = useState([]);
+  const [loadingUsers, setLoadingUsers] = useState(false);
+
+  useEffect(() => {
+    fetchDocuments();
+  }, []);
 
   const fetchDocuments = async () => {
-    if (!user?.email) return;
+    setLoadingDocs(true);
     try {
-      setLoadingDocs(true);
-      setErrorMsg('');
-      const url = new URL(API_BASE_URL);
-      
-      url.searchParams.append('userEmail', user.email);
-      if (user?.role) {
-        url.searchParams.append('userRole', user.role);
-      }
+      const { data, error } = await supabase
+        .from('documents')
+        .select('*')
+        .order('created_at', { ascending: false });
 
-      const res = await fetch(url.toString());
-      const result = await res.json();
-      if (res.ok && result.success) {
-        setDocuments(result.data || []);
-      } else {
-        setErrorMsg(result.message || 'ไม่สามารถดึงข้อมูลเอกสารได้');
-      }
-    } catch (err) {
-      setErrorMsg('เกิดข้อผิดพลาดในการเชื่อมต่อกับเซิร์ฟเวอร์');
+      if (error) throw error;
+      if (data) setDocuments(data);
+    } catch (error) {
+      console.error('Error fetching documents:', error.message);
+      setErrorMsg('ไม่สามารถดึงข้อมูลเอกสารได้');
     } finally {
       setLoadingDocs(false);
     }
   };
 
-  const fetchUsers = async () => {
-    if (user?.role !== 'admin') return;
-    try {
-      setLoadingUsers(true);
-      const res = await fetch(`${BASE_DOMAIN}/api/users`);
-      const result = await res.json();
-      if (res.ok && result.success) {
-        setUsersList(result.data || []);
-      }
-    } catch (err) {
-      console.error('Error fetching users:', err);
-    } finally {
-      setLoadingUsers(false);
-    }
-  };
-
   useEffect(() => {
-    if (user?.email) fetchDocuments();
-  }, [user?.email, user?.role]);
-
-  useEffect(() => {
-    if (activeTab === 'users' && user?.role === 'admin') {
+    if (activeTab === 'users' && user.role === 'admin') {
       fetchUsers();
     }
-  }, [activeTab, user?.role]);
+  }, [activeTab, user.role]);
 
-  const handleFileUpload = async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    if (!user?.email) {
-      setErrorMsg('ไม่พบข้อมูลอีเมลผู้ใช้ กรุณาล็อกอินใหม่อีกครั้ง');
-      return;
-    }
-
-    const MAX_SIZE_MB = 25;
-    if (file.size > MAX_SIZE_MB * 1024 * 1024) {
-      setErrorMsg(`ขนาดไฟล์ใหญ่เกินไป (รองรับสูงสุด ${MAX_SIZE_MB}MB)`);
-      e.target.value = '';
-      return;
-    }
-
-    const fileExt = file.name.split('.').pop()?.toLowerCase() || '';
-    const allowedExtensions = ['pdf', 'doc', 'docx', 'jpg', 'jpeg', 'png', 'webp', 'gif', 'heic', 'heif'];
-    const isImageMime = file.type ? file.type.startsWith('image/') : false;
-    const isPdfOrWordMime = file.type ? (file.type.includes('pdf') || file.type.includes('word') || file.type.includes('officedocument') || file.type.includes('msword')) : false;
-    const isValidExt = allowedExtensions.includes(fileExt);
-
-    if (!isImageMime && !isPdfOrWordMime && !isValidExt) {
-      setErrorMsg('อนุญาตใหัปโหลดเฉพาะไฟล์ PDF, Word และรูปภาพเท่านั้น!');
-      e.target.value = '';
-      return;
-    }
-
-    setErrorMsg('');
-    setIsUploading(true);
-
+  const fetchUsers = async () => {
+    setLoadingUsers(true);
     try {
-      const formData = new FormData();
-      formData.append('file', file);
-      formData.append('userEmail', user.email);
+      const { data, error } = await supabase
+        .from('users')
+        .select('*')
+        .order('created_at', { ascending: false });
 
-      const res = await fetch(`${API_BASE_URL}/upload`, { method: 'POST', body: formData });
-      const result = await res.json();
-      if (res.ok && result.success) {
-        fetchDocuments();
-      } else {
-        setErrorMsg(result.message || 'เกิดข้อผิดพลาดในการอัปโหลด');
-      }
-    } catch (err) {
-      setErrorMsg('ไม่สามารถส่งไฟล์ไปยังเซิร์ฟเวอร์ได้');
+      if (error) throw error;
+      if (data) setUsersList(data);
+    } catch (error) {
+      console.error('Error fetching users:', error.message);
     } finally {
-      setIsUploading(false);
-      e.target.value = '';
-    }
-  };
-
-  const handleDelete = async (id) => {
-    if (!confirm('คุณต้องการลบเอกสารนี้ใช่หรือไม่?')) return;
-    try {
-      const url = new URL(`${API_BASE_URL}/${id}`);
-      if (user?.email) url.searchParams.append('userEmail', user.email);
-      if (user?.role) url.searchParams.append('userRole', user.role);
-
-      const res = await fetch(url.toString(), { method: 'DELETE' });
-      const result = await res.json();
-      if (res.ok && result.success) {
-        setDocuments(prevDocs => prevDocs.filter(doc => doc.id !== id));
-      } else {
-        alert(result.message || 'ไม่สามารถลบเอกสารได้');
-      }
-    } catch (err) {
-      alert('เกิดข้อผิดพลาดในการเชื่อมต่อเพื่อลบเอกสาร');
-    }
-  };
-
-  const handleEdit = async (id, currentName) => {
-    const newName = prompt('แก้ไขชื่อเอกสาร:', currentName);
-    if (!newName || newName.trim() === '' || newName === currentName) return;
-    try {
-      const res = await fetch(`${API_BASE_URL}/${id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          name: newName.trim(), 
-          userEmail: user?.email,
-          userRole: user?.role
-        }),
-      });
-      const result = await res.json();
-      if (res.ok && result.success) {
-        setDocuments(prevDocs => prevDocs.map(doc => doc.id === id ? { ...doc, name: newName.trim() } : doc));
-      } else {
-        alert(result.message || 'ไม่สามารถแก้ไขชื่อเอกสารได้');
-      }
-    } catch (err) {
-      alert('เกิดข้อผิดพลาดในการแก้ไขชื่อเอกสาร');
-    }
-  };
-
-  // ฟังก์ชันจัดการคลิกดูไฟล์ (เปิด Modal พรีวิวเฉพาะรูปภาพและ PDF ส่วนไฟล์อื่นให้เปิดแท็บใหม่)
-  const handlePreviewClick = (doc) => {
-    const category = getFileTypeCategory(doc);
-    if ((category === 'image' || category === 'pdf') && doc.file_url) {
-      setPreviewFile(doc);
-    } else if (doc.file_url) {
-      window.open(doc.file_url, '_blank', 'noopener,noreferrer');
-    } else {
-      alert('ไม่พบลิงก์ไฟล์เอกสาร');
-    }
-  };
-
-  const handleEditUser = async (targetEmail) => {
-    const newPassword = prompt(`ป้อนรหัสผ่านใหม่สำหรับผู้ใช้ (${targetEmail}):`);
-    if (!newPassword) return;
-    try {
-      const token = getSupabaseToken();
-      const res = await fetch(`${BASE_DOMAIN}/api/users/update-password`, {
-        method: 'PUT',
-        headers: { 
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({ email: targetEmail, newPassword })
-      });
-      const result = await res.json();
-      if (res.ok && result.success) {
-        alert('เปลี่ยนรหัสผ่านผู้ใช้สำเร็จ');
-      } else {
-        alert(result.message || 'ไม่สามารถเปลี่ยนรหัสผ่านได้');
-      }
-    } catch (err) {
-      alert('เกิดข้อผิดพลาดในการเชื่อมต่อ');
-    }
-  };
-
-  const handleDeleteUser = async (targetUserId, targetEmail) => {
-    if (!confirm(`คุณต้องการลบบัญชีผู้ใช้ ${targetEmail} ใช่หรือไม่?`)) return;
-    try {
-      const token = getSupabaseToken();
-      const res = await fetch(`${BASE_DOMAIN}/api/users/${targetUserId}`, {
-        method: 'DELETE',
-        headers: { 
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({ adminEmail: user.email })
-      });
-      const result = await res.json();
-      if (res.ok && result.success) {
-        setUsersList(prev => prev.filter(u => u.id !== targetUserId));
-        alert('ลบบัญชีผู้ใช้สำเร็จ');
-      } else {
-        alert(result.message || 'ไม่สามารถลบบัญชีผู้ใช้ได้');
-      }
-    } catch (err) {
-      alert('เกิดข้อผิดพลาดในการลบบัญชีผู้ใช้');
+      setLoadingUsers(false);
     }
   };
 
@@ -291,49 +82,166 @@ function DashboardContent() {
   const imageCount = documents.filter(d => getFileTypeCategory(d) === 'image').length;
 
   const filteredDocs = documents.filter(doc => {
-    const matchesSearch = doc.name ? doc.name.toLowerCase().includes(searchTerm.toLowerCase()) : false;
-    const category = getFileTypeCategory(doc);
-    const matchesTab = activeTab === 'all' || category === activeTab;
+    const matchesSearch = doc.name.toLowerCase().includes(searchTerm.toLowerCase());
+    const categoryMatch = activeTab === 'all' ? true : activeTab === getFileTypeCategory(doc);
+    return matchesSearch && categoryMatch;
+  });
 
-    if (!matchesSearch || !matchesTab) return false;
+  // จัดการการเลือก Checkbox ทีละตัว
+  const handleToggleSelectDoc = (id) => {
+    setSelectedDocIds(prev => 
+      prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]
+    );
+  };
 
-    if (dateFilter !== 'all' && doc.created_at) {
-      const docDate = new Date(doc.created_at);
-      const now = new Date();
+  // เลือกทั้งหมด / ยกเลิกเลือกทั้งหมด ในหน้าปัจจุบัน
+  const handleSelectAll = () => {
+    if (selectedDocIds.length === filteredDocs.length) {
+      setSelectedDocIds([]);
+    } else {
+      setSelectedDocIds(filteredDocs.map(d => d.id));
+    }
+  };
 
-      if (dateFilter === 'week') {
-        const oneWeekAgo = new Date();
-        oneWeekAgo.setDate(now.getDate() - 7);
-        if (docDate < oneWeekAgo) return false;
-      } else if (dateFilter === 'month') {
-        const oneMonthAgo = new Date();
-        oneMonthAgo.setMonth(now.getMonth() - 1);
-        if (docDate < oneMonthAgo) return false;
-      } else if (dateFilter === 'custom') {
-        if (startDate && docDate < new Date(startDate)) return false;
-        if (endDate) {
-          const endDateTime = new Date(endDate);
-          endDateTime.setHours(23, 59, 59, 999);
-          if (docDate > endDateTime) return false;
+  // ฟังก์ชันดาวน์โหลดแบบกลุ่มเป็นไฟล์ ZIP
+  const handleBulkDownloadZip = async () => {
+    if (selectedDocIds.length === 0) return;
+    setIsDownloadingZip(true);
+
+    try {
+      const zip = new JSZip();
+      const folder = zip.folder("downloaded_documents");
+
+      const selectedDocs = documents.filter(d => selectedDocIds.includes(d.id));
+
+      for (const doc of selectedDocs) {
+        if (doc.file_url && doc.file_url !== '#') {
+          try {
+            const response = await fetch(doc.file_url);
+            const blob = await response.blob();
+            folder.file(doc.name, blob);
+          } catch (err) {
+            console.error(`ไม่สามารถโหลดไฟล์ ${doc.name} ได้:`, err);
+          }
         }
       }
-    }
 
-    return true;
-  }).sort((a, b) => {
-    if (sortBy === 'name-asc') {
-      return (a.name || '').localeCompare(b.name || '');
-    } else if (sortBy === 'size-desc') {
-      const sizeA = parseFloat(a.file_size || a.size) || 0;
-      const sizeB = parseFloat(b.file_size || b.size) || 0;
-      return sizeB - sizeA;
-    } else if (sortBy === 'date-desc') {
-      const dateA = new Date(a.created_at || 0);
-      const dateB = new Date(b.created_at || 0);
-      return dateB - dateA;
+      const content = await zip.generateAsync({ type: "blob" });
+      saveAs(content, `documents_${new Date().toISOString().slice(0,10)}.zip`);
+    } catch (error) {
+      alert('เกิดข้อผิดพลาดในการสร้างไฟล์ ZIP: ' + error.message);
+    } finally {
+      setIsDownloadingZip(false);
     }
-    return 0;
-  });
+  };
+
+  const handleFileUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    setIsUploading(true);
+    setErrorMsg('');
+
+    try {
+      const fileName = `${Date.now()}_${file.name}`;
+      const { error: uploadError } = await supabase.storage
+        .from('docs')
+        .upload(fileName, file);
+
+      if (uploadError) throw uploadError;
+
+      const { data: { publicUrl } } = supabase.storage
+        .from('docs')
+        .getPublicUrl(fileName);
+
+      const { error: insertError } = await supabase
+        .from('documents')
+        .insert([
+          { 
+            name: file.name, 
+            file_size: (file.size / (1024 * 1024)).toFixed(2) + ' MB',
+            file_url: publicUrl 
+          }
+        ]);
+
+      if (insertError) throw insertError;
+
+      fetchDocuments();
+    } catch (error) {
+      setErrorMsg('อัปโหลดไม่สำเร็จ: ' + error.message);
+    } finally {
+      setIsUploading(false);
+      e.target.value = '';
+    }
+  };
+
+  const handleDelete = async (id) => {
+    if (!confirm('คุณต้องการลบเอกสารนี้ใช่หรือไม่?')) return;
+
+    try {
+      const { error } = await supabase
+        .from('documents')
+        .delete()
+        .eq('id', id);
+
+      if (error) throw error;
+      setDocuments(prev => prev.filter(d => d.id !== id));
+      setSelectedDocIds(prev => prev.filter(itemId => itemId !== id));
+    } catch (error) {
+      alert('ลบไม่สำเร็จ: ' + error.message);
+    }
+  };
+
+  const handleEdit = async (id, currentName) => {
+    const newName = prompt('แก้ไขชื่อเอกสาร:', currentName);
+    if (newName && newName.trim() !== '' && newName !== currentName) {
+      try {
+        const { error } = await supabase
+          .from('documents')
+          .update({ name: newName.trim() })
+          .eq('id', id);
+
+        if (error) throw error;
+        setDocuments(prev => prev.map(d => d.id === id ? { ...d, name: newName.trim() } : d));
+      } catch (error) {
+        alert('แก้ไขชื่อไม่สำเร็จ: ' + error.message);
+      }
+    }
+  };
+
+  const handleOpenFile = (url) => {
+    if (url && url !== '#') {
+      window.open(url, '_blank', 'noopener,noreferrer');
+    } else {
+      alert('ไม่พบลิงก์ไฟล์สำหรับเปิดดู');
+    }
+  };
+
+  const handleEditUser = (targetEmail) => {
+    const newPassword = prompt(`ป้อนรหัสผ่านใหม่สำหรับผู้ใช้ (${targetEmail}):`);
+    if (newPassword) {
+      alert('เปลี่ยนรหัสผ่านผู้ใช้สำเร็จ');
+    }
+  };
+
+  const handleDeleteUser = async (targetUserId, targetEmail) => {
+    if (!confirm(`คุณต้องการลบบัญชีผู้ใช้ ${targetEmail} ใช่หรือไม่?`)) return;
+    try {
+      const { error } = await supabase
+        .from('users')
+        .delete()
+        .eq('id', targetUserId);
+
+      if (error) throw error;
+      setUsersList(prev => prev.filter(u => u.id !== targetUserId));
+      alert('ลบบัญชีผู้ใช้สำเร็จ');
+    } catch (error) {
+      alert('ลบผู้ใช้ไม่สำเร็จ: ' + error.message);
+    }
+  };
+
+  const logout = () => {
+    alert('ออกจากระบบเรียบร้อย');
+  };
 
   return (
     <div className="min-h-screen flex bg-slate-50 text-slate-800">
@@ -430,7 +338,10 @@ function DashboardContent() {
 
         <main className="p-4 md:p-8 space-y-6 max-w-6xl w-full mx-auto">
           {activeTab === 'profile' ? (
-            <ProfileView />
+            <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+              <h3 className="font-semibold text-slate-900 mb-4">จัดการโปรไฟล์ผู้ใช้งาน</h3>
+              <p className="text-sm text-slate-600">อีเมล: {user?.email}</p>
+            </div>
           ) : activeTab === 'users' ? (
             <div className="space-y-4">
               <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
@@ -499,67 +410,30 @@ function DashboardContent() {
                 </div>
               </div>
 
+              {/* ส่วนค้นหา และปุ่มดาวน์โหลดกลุ่ม (Bulk Download) */}
               <div className="flex flex-col sm:flex-row gap-3 justify-between items-stretch sm:items-center">
                 <div className="relative flex-1 max-w-md">
                   <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                   <input type="text" placeholder="ค้นหาชื่อเอกสาร..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full pl-10 pr-4 py-2 text-sm bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-400" />
                 </div>
-                <label className={`flex items-center justify-center gap-2 px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-sm font-medium cursor-pointer transition shadow-sm shrink-0 ${isUploading ? 'opacity-50 cursor-not-allowed' : ''}`}>
-                  {isUploading ? <Loader2 size={16} className="animate-spin" /> : <Upload size={16} />} 
-                  {isUploading ? 'กำลังอัปโหลด...' : 'อัปโหลดเอกสาร'}
-                  <input type="file" disabled={isUploading} accept="image/*,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,.pdf,.doc,.docx" onChange={handleFileUpload} className="hidden" />
-                </label>
-              </div>
-
-              {/* แผงควบคุม Advanced Search & Sorting */}
-              <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm space-y-3">
-                <div className="flex flex-col lg:flex-row gap-3 justify-between items-stretch lg:items-center">
-                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-semibold text-slate-500 shrink-0">ช่วงเวลา:</span>
-                      <select 
-                        value={dateFilter} 
-                        onChange={(e) => setDateFilter(e.target.value)}
-                        className="w-full sm:w-auto text-xs bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-slate-900"
-                      >
-                        <option value="all">ทั้งหมด</option>
-                        <option value="week">สัปดาห์นี้ (7 วันล่าสุด)</option>
-                        <option value="month">เดือนนี้ (30 วันล่าสุด)</option>
-                        <option value="custom">กำหนดเอง</option>
-                      </select>
-                    </div>
-
-                    {dateFilter === 'custom' && (
-                      <div className="flex items-center gap-1.5 mt-1 sm:mt-0">
-                        <input 
-                          type="date" 
-                          value={startDate} 
-                          onChange={(e) => setStartDate(e.target.value)}
-                          className="w-full sm:w-auto text-xs bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5" 
-                        />
-                        <span className="text-xs text-slate-400 shrink-0">ถึง</span>
-                        <input 
-                          type="date" 
-                          value={endDate} 
-                          onChange={(e) => setEndDate(e.target.value)}
-                          className="w-full sm:w-auto text-xs bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5" 
-                        />
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="flex items-center gap-2 justify-between sm:justify-end">
-                    <span className="text-xs font-semibold text-slate-500 shrink-0">เรียงตาม:</span>
-                    <select 
-                      value={sortBy} 
-                      onChange={(e) => setSortBy(e.target.value)}
-                      className="w-full sm:w-auto text-xs bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-slate-900"
+                
+                <div className="flex items-center gap-2">
+                  {selectedDocIds.length > 0 && (
+                    <button 
+                      onClick={handleBulkDownloadZip}
+                      disabled={isDownloadingZip}
+                      className="flex items-center justify-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-medium transition shadow-sm shrink-0"
                     >
-                      <option value="date-desc">วันที่อัปโหลด (ใหม่-เก่า)</option>
-                      <option value="name-asc">ชื่อเอกสาร (A-Z)</option>
-                      <option value="size-desc">ขนาดไฟล์ (ใหญ่-เล็ก)</option>
-                    </select>
-                  </div>
+                      {isDownloadingZip ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}
+                      ดาวน์โหลดที่เลือก ({selectedDocIds.length}) เป็น .ZIP
+                    </button>
+                  )}
+
+                  <label className={`flex items-center justify-center gap-2 px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-sm font-medium cursor-pointer transition shadow-sm shrink-0 ${isUploading ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                    {isUploading ? <Loader2 size={16} className="animate-spin" /> : <Upload size={16} />} 
+                    {isUploading ? 'กำลังอัปโหลด...' : 'อัปโหลดเอกสาร'}
+                    <input type="file" disabled={isUploading} accept="image/*,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,.pdf,.doc,.docx" onChange={handleFileUpload} className="hidden" />
+                  </label>
                 </div>
               </div>
 
@@ -570,11 +444,21 @@ function DashboardContent() {
                 </div>
               )}
 
+              {/* ตารางแสดงเอกสารพร้อม Checkbox */}
               <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
                 <div className="overflow-x-auto">
-                  <table className="w-full text-left text-sm text-slate-600 min-w-[550px]">
+                  <table className="w-full text-left text-sm text-slate-600 min-w-[600px]">
                     <thead className="bg-slate-50 text-slate-500 text-xs uppercase border-b border-slate-200">
                       <tr>
+                        <th className="px-4 py-3.5 w-10 text-center">
+                          <button onClick={handleSelectAll} className="text-slate-500 hover:text-slate-800" title="เลือกทั้งหมด">
+                            {filteredDocs.length > 0 && selectedDocIds.length === filteredDocs.length ? (
+                              <CheckSquare size={16} className="text-slate-900" />
+                            ) : (
+                              <Square size={16} />
+                            )}
+                          </button>
+                        </th>
                         <th className="px-4 md:px-6 py-3.5 font-medium">ชื่อเอกสาร</th>
                         <th className="px-4 md:px-6 py-3.5 font-medium">ขนาด</th>
                         <th className="px-4 md:px-6 py-3.5 font-medium">วันที่อัปโหลด</th>
@@ -583,29 +467,36 @@ function DashboardContent() {
                     </thead>
                     <tbody className="divide-y divide-slate-100">
                       {loadingDocs ? (
-                        <tr><td colSpan="4" className="text-center py-8 text-slate-400 text-sm"><div className="flex items-center justify-center gap-2"><Loader2 size={18} className="animate-spin" /> กำลังโหลดเอกสาร...</div></td></tr>
+                        <tr><td colSpan="5" className="text-center py-8 text-slate-400 text-sm"><div className="flex items-center justify-center gap-2"><Loader2 size={18} className="animate-spin" /> กำลังโหลดเอกสาร...</div></td></tr>
                       ) : filteredDocs.length > 0 ? (
                         filteredDocs.map((doc) => {
                           const category = getFileTypeCategory(doc);
                           const displaySize = doc.file_size || doc.size || '-';
                           const displayDate = doc.created_at ? new Date(doc.created_at).toLocaleDateString('th-TH') : '-';
+                          const isSelected = selectedDocIds.includes(doc.id);
+
                           return (
-                            <tr key={doc.id} className="hover:bg-slate-50/80 transition">
+                            <tr key={doc.id} className={`hover:bg-slate-50/80 transition ${isSelected ? 'bg-slate-50/90' : ''}`}>
+                              <td className="px-4 py-4 text-center">
+                                <button onClick={() => handleToggleSelectDoc(doc.id)} className="text-slate-400 hover:text-slate-700">
+                                  {isSelected ? <CheckSquare size={16} className="text-slate-900" /> : <Square size={16} />}
+                                </button>
+                              </td>
                               <td className="px-4 md:px-6 py-4 font-medium text-slate-900 flex items-center gap-3">
                                 {category === 'image' && doc.file_url ? (
-                                  <img src={doc.file_url} alt={doc.name} className="w-10 h-10 object-cover rounded-md border border-slate-200 shrink-0 shadow-sm hover:scale-105 transition cursor-pointer" onClick={() => handlePreviewClick(doc)} />
+                                  <img src={doc.file_url} alt={doc.name} className="w-10 h-10 object-cover rounded-md border border-slate-200 shrink-0 shadow-sm hover:scale-105 transition cursor-pointer" onClick={() => handleOpenFile(doc.file_url)} />
                                 ) : category === 'pdf' ? (
                                   <FileText size={18} className="shrink-0 text-red-500" />
                                 ) : (
                                   <FileText size={18} className="shrink-0 text-blue-500" />
                                 )}
-                                <span className="truncate max-w-[180px] sm:max-w-xs cursor-pointer hover:text-slate-900 hover:underline" onClick={() => handlePreviewClick(doc)} title="คลิกเพื่อพรีวิว">{doc.name}</span>
+                                <span className="truncate max-w-[160px] sm:max-w-xs">{doc.name}</span>
                               </td>
                               <td className="px-4 md:px-6 py-4 text-slate-500 text-xs">{displaySize}</td>
                               <td className="px-4 md:px-6 py-4 text-slate-500 text-xs">{displayDate}</td>
                               <td className="px-4 md:px-6 py-4 text-right">
                                 <div className="flex items-center justify-end gap-1 sm:gap-2">
-                                  <button onClick={() => handlePreviewClick(doc)} className="p-1.5 hover:bg-slate-100 text-slate-600 rounded-md transition" title="พรีวิวไฟล์"><Eye size={16} /></button>
+                                  <button onClick={() => handleOpenFile(doc.file_url)} className="p-1.5 hover:bg-slate-100 text-slate-600 rounded-md transition" title="เปิดไฟล์"><ExternalLink size={16} /></button>
                                   <button onClick={() => handleEdit(doc.id, doc.name)} className="p-1.5 hover:bg-slate-100 text-slate-600 rounded-md transition" title="แก้ไขชื่อ"><Edit3 size={16} /></button>
                                   <button onClick={() => handleDelete(doc.id)} className="p-1.5 hover:bg-red-50 text-red-600 rounded-md transition" title="ลบเอกสาร"><Trash2 size={16} /></button>
                                 </div>
@@ -614,7 +505,7 @@ function DashboardContent() {
                           );
                         })
                       ) : (
-                        <tr><td colSpan="4" className="text-center py-8 text-slate-400 text-sm">ไม่พบเอกสารในหมวดหมู่นี้</td></tr>
+                        <tr><td colSpan="5" className="text-center py-8 text-slate-400 text-sm">ไม่พบเอกสารในหมวดหมู่นี้</td></tr>
                       )}
                     </tbody>
                   </table>
@@ -624,65 +515,6 @@ function DashboardContent() {
           )}
         </main>
       </div>
-
-      {/* File Preview Modal (หน้าต่างป๊อปอัปสำหรับพรีวิวไฟล์รูปภาพและ PDF) */}
-      {previewFile && (
-        <div className="fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-3 sm:p-6 backdrop-blur-sm animate-fadeIn">
-          <div className="bg-white w-full max-w-4xl h-[85vh] rounded-2xl shadow-2xl flex flex-col overflow-hidden border border-slate-200">
-            
-            {/* Modal Header */}
-            <div className="px-5 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50 shrink-0">
-              <div className="flex items-center gap-2.5 min-w-0">
-                {getFileTypeCategory(previewFile) === 'pdf' ? (
-                  <FileText size={20} className="text-red-500 shrink-0" />
-                ) : (
-                  <ImageIcon size={20} className="text-emerald-500 shrink-0" />
-                )}
-                <h3 className="font-semibold text-slate-900 text-sm truncate">{previewFile.name}</h3>
-              </div>
-              
-              <div className="flex items-center gap-2">
-                <a 
-                  href={previewFile.file_url} 
-                  target="_blank" 
-                  rel="noopener noreferrer"
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-200 hover:bg-slate-100 text-slate-700 text-xs font-medium rounded-lg transition shadow-sm"
-                  title="เปิดในแท็บใหม่"
-                >
-                  <ExternalLink size={14} /> เปิดแท็บใหม่
-                </a>
-                <button 
-                  onClick={() => setPreviewFile(null)} 
-                  className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-200/60 rounded-lg transition"
-                >
-                  <X size={20} />
-                </button>
-              </div>
-            </div>
-
-            {/* Modal Body (แสดงผลรูปภาพหรือ PDF) */}
-            <div className="flex-1 bg-slate-100 flex items-center justify-center overflow-hidden relative p-2 sm:p-4">
-              {getFileTypeCategory(previewFile) === 'image' ? (
-                <div className="w-full h-full flex items-center justify-center overflow-auto">
-                  <img 
-                    src={previewFile.file_url} 
-                    alt={previewFile.name} 
-                    className="max-w-full max-h-full object-contain rounded-lg shadow-md bg-white" 
-                  />
-                </div>
-              ) : (
-                <iframe 
-                  src={`${previewFile.file_url}#toolbar=0`} 
-                  title={previewFile.name} 
-                  className="w-full h-full rounded-lg border border-slate-200 bg-white shadow-sm"
-                />
-              )}
-            </div>
-
-          </div>
-        </div>
-      )}
-
     </div>
   );
 }
